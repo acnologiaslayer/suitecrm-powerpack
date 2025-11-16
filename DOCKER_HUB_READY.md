@@ -10,10 +10,10 @@
 All four tags have been successfully built and are ready to push to Docker Hub:
 
 ```bash
-acnologiaslayer/suitecrm-powerpack:latest     ea482cde3c29   1.09GB
-acnologiaslayer/suitecrm-powerpack:v1.0.0     ea482cde3c29   1.09GB
-acnologiaslayer/suitecrm-powerpack:1.0        ea482cde3c29   1.09GB
-acnologiaslayer/suitecrm-powerpack:1          ea482cde3c29   1.09GB
+mahir009/suitecrm-powerpack:latest     ea482cde3c29   1.09GB
+mahir009/suitecrm-powerpack:v1.0.0     ea482cde3c29   1.09GB
+mahir009/suitecrm-powerpack:1.0        ea482cde3c29   1.09GB
+mahir009/suitecrm-powerpack:1          ea482cde3c29   1.09GB
 ```
 
 ## What Got Fixed
@@ -44,16 +44,16 @@ Enter your Docker Hub credentials when prompted.
 
 **Option C: Manual Push Commands**
 ```bash
-docker push acnologiaslayer/suitecrm-powerpack:latest
-docker push acnologiaslayer/suitecrm-powerpack:v1.0.0
-docker push acnologiaslayer/suitecrm-powerpack:1.0
-docker push acnologiaslayer/suitecrm-powerpack:1
+docker push mahir009/suitecrm-powerpack:latest
+docker push mahir009/suitecrm-powerpack:v1.0.0
+docker push mahir009/suitecrm-powerpack:1.0
+docker push mahir009/suitecrm-powerpack:1
 ```
 
 ### Step 3: Verify on Docker Hub
 
 Once pushed, verify your images at:
-**https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack**
+**https://hub.docker.com/r/mahir009/suitecrm-powerpack**
 
 ## Image Features
 
@@ -79,20 +79,20 @@ docker run -d \\
   -e DB_NAME=suitecrm \\
   -e DB_USER=suitecrm_user \\
   -e DB_PASSWORD=your-password \\
-  acnologiaslayer/suitecrm-powerpack:latest
+  mahir009/suitecrm-powerpack:latest
 
 # Access at http://localhost:8080
 ```
 
 ## Repository Links
 
-- **GitHub**: https://github.com/acnologiaslayer/suitecrm-powerpack
-- **Docker Hub**: https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack (after push)
+- **GitHub**: https://github.com/mahir009/suitecrm-powerpack
+- **Docker Hub**: https://hub.docker.com/r/mahir009/suitecrm-powerpack (after push)
 
 ## Support
 
 For issues, feature requests, or contributions, visit:  
-https://github.com/acnologiaslayer/suitecrm-powerpack/issues
+https://github.com/mahir009/suitecrm-powerpack/issues
 
 ---
 

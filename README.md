@@ -1,7 +1,7 @@
 # SuiteCRM PowerPack
 
-[![Docker Hub](https://img.shields.io/docker/v/acnologiaslayer/suitecrm-powerpack?label=Docker%20Hub)](https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack)
-[![Docker Image Size](https://img.shields.io/docker/image-size/acnologiaslayer/suitecrm-powerpack)](https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack)
+[![Docker Hub](https://img.shields.io/docker/v/mahir009/suitecrm-powerpack?label=Docker%20Hub)](https://hub.docker.com/r/mahir009/suitecrm-powerpack)
+[![Docker Image Size](https://img.shields.io/docker/image-size/mahir009/suitecrm-powerpack)](https://hub.docker.com/r/mahir009/suitecrm-powerpack)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A production-ready Docker image for SuiteCRM with three powerful extensions:

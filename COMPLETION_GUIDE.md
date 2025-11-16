@@ -8,7 +8,7 @@
 - All documentation and files updated
 
 ### 2. GitHub Repository Created ✓
-- **Repository**: https://github.com/acnologiaslayer/suitecrm-powerpack
+- **Repository**: https://github.com/mahir009/suitecrm-powerpack
 - **Visibility**: Public
 - **Initial Commit**: Pushed successfully
 - **Branch**: main
@@ -20,7 +20,7 @@
 - First commit pushed
 
 ### 4. Docker Image Building 🔄
-- **Image Name**: `acnologiaslayer/suitecrm-powerpack`
+- **Image Name**: `mahir009/suitecrm-powerpack`
 - **Tags Being Created**:
   - `latest`
   - `v1.0.0`
@@ -61,10 +61,10 @@ Once build completes and you're logged in:
 cd /home/mahir/Projects/suitecrm
 
 # Push all tags
-docker push acnologiaslayer/suitecrm-powerpack:latest
-docker push acnologiaslayer/suitecrm-powerpack:v1.0.0
-docker push acnologiaslayer/suitecrm-powerpack:1.0
-docker push acnologiaslayer/suitecrm-powerpack:1
+docker push mahir009/suitecrm-powerpack:latest
+docker push mahir009/suitecrm-powerpack:v1.0.0
+docker push mahir009/suitecrm-powerpack:1.0
+docker push mahir009/suitecrm-powerpack:1
 ```
 
 **OR** use the automated script:
@@ -76,7 +76,7 @@ docker push acnologiaslayer/suitecrm-powerpack:1
 ### Step 4: Verify on Docker Hub
 
 After pushing, verify your image at:
-https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack
+https://hub.docker.com/r/mahir009/suitecrm-powerpack
 
 ---
 
@@ -85,7 +85,7 @@ https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack
 ### Build the Image
 ```bash
 cd /home/mahir/Projects/suitecrm
-docker build -t acnologiaslayer/suitecrm-powerpack:latest .
+docker build -t mahir009/suitecrm-powerpack:latest .
 ```
 
 ### Test Locally
@@ -97,7 +97,7 @@ docker run -d \
   -e SUITECRM_DATABASE_NAME=suitecrm \
   -e SUITECRM_DATABASE_USER=suitecrm \
   -e SUITECRM_DATABASE_PASSWORD=your_password \
-  acnologiaslayer/suitecrm-powerpack:latest
+  mahir009/suitecrm-powerpack:latest
 ```
 
 ### Push to Docker Hub
@@ -106,10 +106,10 @@ docker run -d \
 docker login
 
 # Push all tags
-docker push acnologiaslayer/suitecrm-powerpack:latest
-docker push acnologiaslayer/suitecrm-powerpack:v1.0.0
-docker push acnologiaslayer/suitecrm-powerpack:1.0
-docker push acnologiaslayer/suitecrm-powerpack:1
+docker push mahir009/suitecrm-powerpack:latest
+docker push mahir009/suitecrm-powerpack:v1.0.0
+docker push mahir009/suitecrm-powerpack:1.0
+docker push mahir009/suitecrm-powerpack:1
 ```
 
 ### Git Commands
@@ -133,8 +133,8 @@ git push origin v1.0.0
 ## 📊 Project Information
 
 ### Repository Details
-- **GitHub**: https://github.com/acnologiaslayer/suitecrm-powerpack
-- **Docker Hub**: https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack (after push)
+- **GitHub**: https://github.com/mahir009/suitecrm-powerpack
+- **Docker Hub**: https://hub.docker.com/r/mahir009/suitecrm-powerpack (after push)
 - **License**: MIT
 - **Version**: 1.0.0
 
@@ -174,7 +174,7 @@ git push origin v1.0.0
 ### Updated Files
 - `README.md` - Updated with new name and Docker Hub info
 - All references to "SuiteCRM Extended" → "SuiteCRM PowerPack"
-- Docker Hub username: `mahir` → `acnologiaslayer`
+- Docker Hub username: `mahir` → `mahir009`
 
 ---
 
@@ -184,7 +184,7 @@ git push origin v1.0.0
 
 Pull and run:
 ```bash
-docker pull acnologiaslayer/suitecrm-powerpack:latest
+docker pull mahir009/suitecrm-powerpack:latest
 
 docker run -d \
   --name suitecrm \
@@ -193,12 +193,12 @@ docker run -d \
   -e SUITECRM_DATABASE_USER=user \
   -e SUITECRM_DATABASE_PASSWORD=pass \
   -e SUITECRM_DATABASE_NAME=suitecrm \
-  acnologiaslayer/suitecrm-powerpack:latest
+  mahir009/suitecrm-powerpack:latest
 ```
 
 Or with docker-compose:
 ```bash
-curl -O https://raw.githubusercontent.com/acnologiaslayer/suitecrm-powerpack/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/mahir009/suitecrm-powerpack/main/docker-compose.yml
 docker-compose up -d
 ```
 
@@ -206,7 +206,7 @@ docker-compose up -d
 
 Clone and contribute:
 ```bash
-git clone https://github.com/acnologiaslayer/suitecrm-powerpack.git
+git clone https://github.com/mahir009/suitecrm-powerpack.git
 cd suitecrm-powerpack
 # Make your changes
 git checkout -b feature/my-feature
@@ -251,8 +251,8 @@ VERSION=1.1.0 ./build-dockerhub.sh
 
 ```bash
 # Rebuild with latest base image
-docker build --no-cache -t acnologiaslayer/suitecrm-powerpack:latest .
-docker push acnologiaslayer/suitecrm-powerpack:latest
+docker build --no-cache -t mahir009/suitecrm-powerpack:latest .
+docker push mahir009/suitecrm-powerpack:latest
 ```
 
 ---
@@ -284,9 +284,9 @@ docker push acnologiaslayer/suitecrm-powerpack:latest
 
 ## 📞 Support & Resources
 
-- **GitHub Issues**: https://github.com/acnologiaslayer/suitecrm-powerpack/issues
-- **GitHub Discussions**: https://github.com/acnologiaslayer/suitecrm-powerpack/discussions
-- **Docker Hub**: https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack
+- **GitHub Issues**: https://github.com/mahir009/suitecrm-powerpack/issues
+- **GitHub Discussions**: https://github.com/mahir009/suitecrm-powerpack/discussions
+- **Docker Hub**: https://hub.docker.com/r/mahir009/suitecrm-powerpack
 
 ---
 

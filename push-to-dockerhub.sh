@@ -18,24 +18,24 @@ echo "✓ Logged into Docker Hub"
 echo ""
 
 # Push all tags
-echo "Pushing acnologiaslayer/suitecrm-powerpack:latest..."
-docker push acnologiaslayer/suitecrm-powerpack:latest
+echo "Pushing mahir009/suitecrm-powerpack:latest..."
+docker push mahir009/suitecrm-powerpack:latest
 
-echo "Pushing acnologiaslayer/suitecrm-powerpack:v1.0.0..."
-docker push acnologiaslayer/suitecrm-powerpack:v1.0.0
+echo "Pushing mahir009/suitecrm-powerpack:v1.0.0..."
+docker push mahir009/suitecrm-powerpack:v1.0.0
 
-echo "Pushing acnologiaslayer/suitecrm-powerpack:1.0..."
-docker push acnologiaslayer/suitecrm-powerpack:1.0
+echo "Pushing mahir009/suitecrm-powerpack:1.0..."
+docker push mahir009/suitecrm-powerpack:1.0
 
-echo "Pushing acnologiaslayer/suitecrm-powerpack:1..."
-docker push acnologiaslayer/suitecrm-powerpack:1
+echo "Pushing mahir009/suitecrm-powerpack:1..."
+docker push mahir009/suitecrm-powerpack:1
 
 echo ""
 echo "✅ All images pushed successfully!"
 echo ""
 echo "View on Docker Hub:"
-echo "  https://hub.docker.com/r/acnologiaslayer/suitecrm-powerpack"
+echo "  https://hub.docker.com/r/mahir009/suitecrm-powerpack"
 echo ""
 echo "Pull with:"
-echo "  docker pull acnologiaslayer/suitecrm-powerpack:latest"
+echo "  docker pull mahir009/suitecrm-powerpack:latest"
 echo ""
