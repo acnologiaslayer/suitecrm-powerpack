@@ -69,6 +69,47 @@ class TwilioClient {
     }
     
     /**
+     * Send SMS via Twilio API
+     */
+    public function sendSMS($to, $message, $from = null) {
+        if (!$from) {
+            $from = $this->phoneNumber;
+        }
+        
+        $url = "https://api.twilio.com/2010-04-01/Accounts/{$this->accountSid}/Messages.json";
+        
+        $data = array(
+            'From' => $from,
+            'To' => $to,
+            'Body' => $message,
+            'StatusCallback' => $this->getSMSWebhookUrl(),
+        );
+        
+        return $this->makeRequest($url, $data);
+    }
+    
+    /**
+     * Get SMS message details
+     */
+    public function getMessageDetails($messageSid) {
+        $url = "https://api.twilio.com/2010-04-01/Accounts/{$this->accountSid}/Messages/{$messageSid}.json";
+        return $this->makeRequest($url, null, 'GET');
+    }
+    
+    /**
+     * Get messages for a specific number
+     */
+    public function getMessages($phoneNumber = null, $limit = 20) {
+        $url = "https://api.twilio.com/2010-04-01/Accounts/{$this->accountSid}/Messages.json?PageSize={$limit}";
+        
+        if ($phoneNumber) {
+            $url .= "&To=" . urlencode($phoneNumber);
+        }
+        
+        return $this->makeRequest($url, null, 'GET');
+    }
+    
+    /**
      * Make HTTP request to Twilio API
      */
     private function makeRequest($url, $data = null, $method = 'POST') {
@@ -106,5 +147,14 @@ class TwilioClient {
         global $sugar_config;
         $siteUrl = $sugar_config['site_url'];
         return $siteUrl . '/index.php?module=TwilioIntegration&action=webhook';
+    }
+    
+    /**
+     * Get webhook URL for SMS status updates
+     */
+    private function getSMSWebhookUrl() {
+        global $sugar_config;
+        $siteUrl = $sugar_config['site_url'];
+        return $siteUrl . '/index.php?module=TwilioIntegration&action=sms_webhook';
     }
 }

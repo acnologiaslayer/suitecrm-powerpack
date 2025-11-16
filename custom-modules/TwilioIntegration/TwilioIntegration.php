@@ -81,6 +81,41 @@ class TwilioIntegration extends Basic {
     }
     
     /**
+     * Send SMS using Twilio
+     */
+    public function sendSMS($to, $message, $from = null) {
+        require_once('modules/TwilioIntegration/TwilioClient.php');
+        
+        $client = new TwilioClient();
+        return $client->sendSMS($to, $message, $from);
+    }
+    
+    /**
+     * Log SMS to SuiteCRM
+     */
+    public function logSMS($messageSid, $from, $to, $message, $status, $direction = 'Outbound') {
+        global $current_user;
+        
+        // Create a note to log the SMS
+        $note = BeanFactory::newBean('Notes');
+        $note->name = "SMS " . ($direction === 'Outbound' ? 'to' : 'from') . " " . $to;
+        $note->description = $message;
+        $note->assigned_user_id = $current_user->id;
+        $note->parent_type = 'Contacts';
+        
+        // Add Twilio metadata
+        $note->description .= "\n\n---\nTwilio Message SID: " . $messageSid;
+        $note->description .= "\nStatus: " . $status;
+        $note->description .= "\nDirection: " . $direction;
+        $note->description .= "\nFrom: " . $from;
+        $note->description .= "\nTo: " . $to;
+        
+        $note->save();
+        
+        return $note->id;
+    }
+    
+    /**
      * Get configuration settings
      */
     public static function getConfig() {
