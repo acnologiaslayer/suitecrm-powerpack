@@ -5,6 +5,24 @@ All notable changes to SuiteCRM PowerPack will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-11-17
+
+### Added
+- SMS (Click-to-text) functionality in Twilio Integration
+  - Click-to-text button on all phone fields
+  - Interactive SMS compose dialog
+  - Character counter (1600 characters max)
+  - Automatic SMS logging to Notes
+  - SMS status callbacks
+  - Message history retrieval
+  - Ctrl+Enter shortcut to send
+
+### Enhanced
+- Updated JavaScript UI with separate Call and SMS buttons
+- Improved notification system with info/success/error states
+- Better visual feedback for SMS operations
+- Enhanced TwilioClient with SMS API methods
+
 ## [1.0.0] - 2025-11-16
 
 ### Added
@@ -51,4 +69,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quick start guide
 - Troubleshooting documentation
 
+[1.0.1]: https://github.com/mahir/suitecrm-powerpack/releases/tag/v1.0.1
 [1.0.0]: https://github.com/mahir/suitecrm-powerpack/releases/tag/v1.0.0

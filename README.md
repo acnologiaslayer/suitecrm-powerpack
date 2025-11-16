@@ -6,7 +6,7 @@
 
 A production-ready Docker image for SuiteCRM with three powerful extensions:
 
-1. **🔔 Twilio Integration** - Click-to-call, auto logging, and call recordings
+1. **🔔 Twilio Integration** - Click-to-call, click-to-text (SMS), auto logging, and call recordings
 2. **📊 Lead Journey Timeline** - Unified view of all touchpoints (calls, emails, site visits, LinkedIn clicks)
 3. **📈 Funnel Dashboards** - Segmented by category with comprehensive stage-tracking
 
@@ -18,10 +18,13 @@ All features are **configurable from the UI** and **ready to use out of the box*
 
 ### 1. Twilio Integration
 - **Click-to-Call**: Click any phone number in SuiteCRM to initiate calls
-- **Auto-Logging**: Automatically log all calls to the CRM
+- **Click-to-Text (SMS)**: Send SMS messages directly from phone fields
+- **SMS Dialog**: Interactive compose window with character counter
+- **Auto-Logging**: Automatically log all calls and SMS to the CRM
 - **Call Recordings**: Record calls and store them in SuiteCRM
 - **UI Configuration**: Configure Twilio settings from the admin panel
-- **Real-time Status**: Track call status and duration
+- **Real-time Status**: Track call and message status
+- **Message History**: Retrieve and view past SMS conversations
 
 ### 2. Lead Journey Timeline
 - **Unified Timeline**: View all interactions in a single chronological view
