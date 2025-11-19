@@ -1,90 +1,44 @@
-FROM php:8.1-apache
+FROM public.ecr.aws/bitnami/suitecrm:latest
 
-# Install system dependencies including mysql-client for database operations
+USER root
+
+# Install additional dependencies
 RUN apt-get update && apt-get install -y \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
-    libzip-dev \
-    libldap2-dev \
-    libssl-dev \
-    libkrb5-dev \
-    default-mysql-client \
-    ca-certificates \
-    cron \
     git \
-    unzip \
     curl \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) gd pdo pdo_mysql mysqli zip ldap \
-    && a2enmod rewrite \
+    cron \
     && rm -rf /var/lib/apt/lists/*
 
-# Set recommended PHP settings for SuiteCRM
-RUN { \
-    echo 'upload_max_filesize = 20M'; \
-    echo 'post_max_size = 20M'; \
-    echo 'memory_limit = 256M'; \
-    echo 'max_execution_time = 600'; \
-    echo 'max_input_time = 600'; \
-    echo 'date.timezone = UTC'; \
-    } > /usr/local/etc/php/conf.d/suitecrm.ini
-
-# Download and install SuiteCRM
-WORKDIR /var/www/html
-RUN curl -L -o suitecrm.zip https://github.com/salesagility/SuiteCRM/archive/refs/tags/v7.14.2.zip \
-    && unzip suitecrm.zip \
-    && mv SuiteCRM-7.14.2/* . \
-    && mv SuiteCRM-7.14.2/.* . 2>/dev/null || true \
-    && rm -rf SuiteCRM-7.14.2 suitecrm.zip
-
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
-
-# Install composer dependencies
-RUN if [ -f "composer.json" ]; then \
-        composer install --no-dev --optimize-autoloader --no-interaction || true; \
-    fi
-
-# Patch MysqliManager to handle sql_require_primary_key for managed databases
-RUN if [ -f "include/database/MysqliManager.php" ]; then \
-        sed -i '/public function connect(array $configOptions = null, $dieOnError = false)/,/^    }$/c\
-    public function connect(array $configOptions = null, $dieOnError = false)\
-    {\
-        $result = parent::connect($configOptions, $dieOnError);\
-        if ($result && $this->database) {\
-            try {\
-                $this->database->query("SET SESSION sql_require_primary_key = 0");\
-            } catch (Exception $e) {\
-                // Ignore if setting not supported\
-            }\
-        }\
-        return $result;\
-    }' include/database/MysqliManager.php; \
-    fi
-
-# Create required directories
-RUN mkdir -p custom/modules custom/Extension/application/Ext/Include \
-    && chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html \
-    && chmod -R 775 cache custom modules themes data upload config_override.php 2>/dev/null || true
-
 # Copy custom modules and configurations
-COPY ./custom-modules /var/www/html/custom/modules/
-COPY ./install-scripts /usr/local/bin/
-COPY ./config/config_override.php.template /var/www/html/
+COPY --chown=daemon:daemon custom-modules/TwilioIntegration /opt/bitnami/suitecrm/modules/TwilioIntegration
+COPY --chown=daemon:daemon custom-modules/LeadJourney /opt/bitnami/suitecrm/modules/LeadJourney
+COPY --chown=daemon:daemon custom-modules/FunnelDashboard /opt/bitnami/suitecrm/modules/FunnelDashboard
 
-# Make scripts executable
-RUN chmod +x /usr/local/bin/*.sh
+# Copy installation scripts
+COPY install-scripts/install-modules.sh /opt/bitnami/scripts/suitecrm/install-modules.sh
+RUN chmod +x /opt/bitnami/scripts/suitecrm/install-modules.sh
 
-# Setup cron for SuiteCRM scheduler
-RUN echo "* * * * * www-data cd /var/www/html && php -f cron.php > /dev/null 2>&1" >> /etc/crontab
+# Copy custom entrypoint
+COPY docker-entrypoint.sh /opt/bitnami/scripts/suitecrm/powerpack-entrypoint.sh
+RUN chmod +x /opt/bitnami/scripts/suitecrm/powerpack-entrypoint.sh
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Create config_override.php.template for PowerPack features
+RUN echo '<?php' > /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '// Twilio Integration Configuration' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["twilio_account_sid"] = getenv("TWILIO_ACCOUNT_SID") ?: "";' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["twilio_auth_token"] = getenv("TWILIO_AUTH_TOKEN") ?: "";' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["twilio_phone_number"] = getenv("TWILIO_PHONE_NUMBER") ?: "";' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["twilio_enable_click_to_call"] = true;' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["twilio_enable_auto_logging"] = true;' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["twilio_enable_recordings"] = true;' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    chown daemon:daemon /opt/bitnami/suitecrm/config_override.php.template
 
-EXPOSE 80
+# Switch to daemon user (Bitnami non-root user)
+USER 1001
 
-ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["apache2-foreground"]
+# Expose Bitnami default ports
+EXPOSE 8080 8443
+
+# Use custom entrypoint that wraps Bitnami's entrypoint
+ENTRYPOINT ["/opt/bitnami/scripts/suitecrm/powerpack-entrypoint.sh"]
+CMD ["/opt/bitnami/scripts/suitecrm/run.sh"]
