@@ -65,14 +65,34 @@ chown daemon:daemon /bitnami/suitecrm/public/legacy/config_si.php
 
 echo "Running silent installer..."
 
-# The legacy installer will detect config_si.php and auto-redirect to silent installation
-echo "Executing: cd /bitnami/suitecrm/public/legacy && php install.php"
-OUTPUT=$(su -s /bin/bash daemon -c "cd /bitnami/suitecrm/public/legacy && php install.php 2>&1")
+# Create a PHP script to properly trigger the silent installation
+cat > /tmp/run_silent_install.php <<'PHPEOF'
+<?php
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['HTTP_HOST'] = 'localhost';
+$_SERVER['REQUEST_URI'] = '/legacy/install.php?goto=SilentInstall&cli=true';
+$_GET['goto'] = 'SilentInstall';
+$_GET['cli'] = 'true';
+
+chdir('/bitnami/suitecrm/public/legacy');
+include('/bitnami/suitecrm/public/legacy/install.php');
+?>
+PHPEOF
+
+# Run the PHP script as daemon user
+echo "Executing silent installation..."
+OUTPUT=$(su -s /bin/bash daemon -c "cd /bitnami/suitecrm/public/legacy && php /tmp/run_silent_install.php 2>&1")
 INSTALL_STATUS=$?
 
 echo "$OUTPUT"
 
-if [ $INSTALL_STATUS -eq 0 ] && [ -f "/bitnami/suitecrm/config.php" ]; then
+# Clean up
+rm -f /tmp/run_silent_install.php
+
+# Wait a moment for any async operations
+sleep 3
+
+if [ -f "/bitnami/suitecrm/config.php" ]; then
     echo "✅ SuiteCRM silent installation completed successfully!"
     
     # Clear cache and sessions
