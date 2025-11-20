@@ -22,8 +22,8 @@ if [ -z "$DB_HOST" ] || [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS
     exit 1
 fi
 
-# Create config_si.php for silent installation (in parent directory)
-cat > /bitnami/suitecrm/config_si.php <<EOF
+# Create config_si.php for silent installation in legacy directory where install.php expects it
+cat > /bitnami/suitecrm/public/legacy/config_si.php <<EOF
 <?php
 \$sugar_config_si = array(
     'setup_db_host_name' => '${DB_HOST}',
@@ -61,12 +61,12 @@ cat > /bitnami/suitecrm/config_si.php <<EOF
 ?>
 EOF
 
-chown daemon:daemon /bitnami/suitecrm/config_si.php
+chown daemon:daemon /bitnami/suitecrm/public/legacy/config_si.php
 
 echo "Running silent installer..."
 
-# Run the SuiteCRM silent installer as daemon user
-su -s /bin/bash daemon -c "cd /bitnami/suitecrm/public && php install.php"
+# The legacy installer will detect config_si.php and auto-redirect to silent installation
+su -s /bin/bash daemon -c "cd /bitnami/suitecrm/public/legacy && php install.php"
 
 if [ $? -eq 0 ]; then
     echo "✅ SuiteCRM silent installation completed successfully!"
@@ -83,7 +83,7 @@ if [ $? -eq 0 ]; then
     chmod -R 755 /bitnami/suitecrm
     
     # Clean up silent install config
-    rm -f /bitnami/suitecrm/config_si.php
+    rm -f /bitnami/suitecrm/public/legacy/config_si.php
     
     exit 0
 else

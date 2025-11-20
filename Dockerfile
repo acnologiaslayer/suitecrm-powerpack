@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     cron \
-    default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy custom modules and configurations
@@ -25,11 +24,9 @@ COPY --chown=daemon:daemon custom-modules/TwilioIntegration /opt/bitnami/suitecr
 COPY --chown=daemon:daemon custom-modules/LeadJourney /opt/bitnami/suitecrm/modules/LeadJourney
 COPY --chown=daemon:daemon custom-modules/FunnelDashboard /opt/bitnami/suitecrm/modules/FunnelDashboard
 
-# Copy installation scripts
+# Copy installation script
 COPY install-scripts/install-modules.sh /opt/bitnami/scripts/suitecrm/install-modules.sh
-COPY install-scripts/silent-install.sh /opt/bitnami/scripts/suitecrm/silent-install.sh
-RUN chmod +x /opt/bitnami/scripts/suitecrm/install-modules.sh && \
-    chmod +x /opt/bitnami/scripts/suitecrm/silent-install.sh
+RUN chmod +x /opt/bitnami/scripts/suitecrm/install-modules.sh
 
 # Copy custom entrypoint
 COPY docker-entrypoint.sh /opt/bitnami/scripts/suitecrm/powerpack-entrypoint.sh
