@@ -4,26 +4,58 @@ Production-ready SuiteCRM with three powerful custom modules for enhanced CRM ca
 
 ## 🚀 Quick Start
 
+### Option A: Fully Automated (Recommended)
+
 ```bash
 # Create volume for persistent data
 docker volume create suitecrm-data
 
-# Run with DigitalOcean MySQL (or any managed database)
+# Run with all environment variables - SuiteCRM installs automatically!
 docker run -d \
   --name suitecrm \
   -p 80:8080 \
   -v suitecrm-data:/bitnami/suitecrm \
   -e SUITECRM_DATABASE_HOST=your-db-host.com \
-  -e SUITECRM_DATABASE_PORT_NUMBER=25060 \
-  -e SUITECRM_DATABASE_USER=doadmin \
+  -e SUITECRM_DATABASE_PORT_NUMBER=3306 \
+  -e SUITECRM_DATABASE_USER=suitecrm \
   -e SUITECRM_DATABASE_PASSWORD=your-password \
-  -e SUITECRM_DATABASE_NAME=defaultdb \
-  -e MYSQL_CLIENT_ENABLE_SSL=yes \
+  -e SUITECRM_DATABASE_NAME=suitecrm \
+  -e SUITECRM_SITE_URL=http://your-domain.com \
+  -e SUITECRM_USERNAME=admin \
+  -e SUITECRM_PASSWORD=admin123 \
   -e SUITECRM_HOST=your-domain.com \
   mahir009/suitecrm-powerpack:latest
 ```
 
-Then access SuiteCRM at `http://your-domain.com` and complete the web installation wizard.
+**That's it!** The container will:
+1. ✅ Wait for database to be ready
+2. ✅ Install SuiteCRM automatically (silent installation)
+3. ✅ Install all 3 custom modules
+4. ✅ Configure Twilio settings from environment variables
+5. ✅ Be ready to use in ~60 seconds!
+
+Access at: `http://your-domain.com` (login with credentials from env vars)
+
+### Option B: Manual Web Installation
+
+```bash
+# Create volume for persistent data
+docker volume create suitecrm-data
+
+# Run with minimal environment variables
+docker run -d \
+  --name suitecrm \
+  -p 80:8080 \
+  -v suitecrm-data:/bitnami/suitecrm \
+  -e SUITECRM_SKIP_INSTALL=yes \
+  mahir009/suitecrm-powerpack:latest
+```
+
+Then:
+1. Access `http://your-domain:8080/install.php`
+2. Complete installation wizard manually
+3. Restart container: `docker restart suitecrm`
+4. Modules install automatically on restart
 
 ## 📦 What's Included
 
@@ -65,7 +97,7 @@ Built on **Bitnami SuiteCRM** base image for:
 
 ## 🔧 Configuration
 
-### Required Environment Variables
+### Required Environment Variables (For Silent Install)
 
 ```bash
 # Database Configuration (Required)
@@ -75,15 +107,19 @@ SUITECRM_DATABASE_USER=suitecrm
 SUITECRM_DATABASE_PASSWORD=your-password
 SUITECRM_DATABASE_NAME=suitecrm
 
-# Application Settings
-SUITECRM_HOST=your-domain.com
+# Application Settings (Required for silent install)
+SUITECRM_SITE_URL=http://your-domain.com
 SUITECRM_USERNAME=admin
-SUITECRM_PASSWORD=admin
+SUITECRM_PASSWORD=admin123
+SUITECRM_HOST=your-domain.com
 ```
 
 ### Optional Environment Variables
 
 ```bash
+# Skip automated installation (use manual web installer)
+SUITECRM_SKIP_INSTALL=yes
+
 # Twilio Integration
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=your-token
@@ -195,31 +231,30 @@ server {
 
 ## 📖 Initial Setup
 
-### Step 1: Install SuiteCRM
+### Automated Setup (Zero Configuration!)
+
+With all environment variables set, the container automatically:
+
+1. **Waits for database** - Checks every 2 seconds (up to 60 seconds)
+2. **Installs SuiteCRM silently** - No web installer needed!
+3. **Installs custom modules** - All 3 modules configured automatically
+4. **Applies Twilio config** - From environment variables
+5. **Ready to use** - Login with your admin credentials
+
+**Total time:** ~60 seconds from start to fully functional CRM!
+
+### Manual Setup (Optional)
+
+If you prefer manual installation or set `SUITECRM_SKIP_INSTALL=yes`:
 
 1. **Start container** with database credentials
 2. **Access web installer** at `http://your-domain:8080/install.php`
-3. **Complete installation** wizard with same database credentials
-4. **Restart container** to trigger automatic module installation:
-   ```bash
-   docker restart suitecrm
-   ```
-5. **Wait 30 seconds** for modules to install automatically
-6. **Log in** as admin - modules are now available!
+3. **Complete installation** wizard
+4. **Restart container**: `docker restart suitecrm`
+5. **Modules install automatically** on restart
+6. **Log in** and start using!
 
-### Step 2: Automatic Module Installation
-
-After SuiteCRM installation, the entrypoint automatically:
-- ✅ Detects when SuiteCRM is installed (checks for `config.php`)
-- ✅ Installs all three custom modules
-- ✅ Copies extension files for JavaScript and buttons
-- ✅ Creates database tables
-- ✅ Runs Quick Repair and Rebuild
-- ✅ Sets proper permissions
-
-**No manual intervention required!** Just restart the container after web installation.
-
-### Step 3: Enable Click-to-Call/SMS Features
+### Configure Twilio (Optional)
 
 1. Go to **Admin Panel** > **Twilio Integration**
 2. Click **Configuration**
