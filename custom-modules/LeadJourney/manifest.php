@@ -23,8 +23,36 @@ $installdefs = array(
     'id' => 'lead_journey_timeline',
     'copy' => array(
         array(
-            'from' => '<basepath>/modules/LeadJourney',
-            'to' => 'modules/LeadJourney',
+            'from' => '<basepath>/LeadJourney.php',
+            'to' => 'modules/LeadJourney/LeadJourney.php',
+        ),
+        array(
+            'from' => '<basepath>/vardefs.php',
+            'to' => 'modules/LeadJourney/vardefs.php',
+        ),
+        array(
+            'from' => '<basepath>/Menu.php',
+            'to' => 'modules/LeadJourney/Menu.php',
+        ),
+        array(
+            'from' => '<basepath>/tracking.js',
+            'to' => 'modules/LeadJourney/tracking.js',
+        ),
+        array(
+            'from' => '<basepath>/views',
+            'to' => 'modules/LeadJourney/views',
+        ),
+        array(
+            'from' => '<basepath>/language',
+            'to' => 'modules/LeadJourney/language',
+        ),
+        array(
+            'from' => '<basepath>/Extensions/modules/Contacts/Ext/Vardefs/journey_button.php',
+            'to' => 'custom/Extension/modules/Contacts/Ext/Vardefs/journey_button.php',
+        ),
+        array(
+            'from' => '<basepath>/Extensions/modules/Leads/Ext/Vardefs/journey_button.php',
+            'to' => 'custom/Extension/modules/Leads/Ext/Vardefs/journey_button.php',
         ),
     ),
     'beans' => array(
@@ -33,6 +61,13 @@ $installdefs = array(
             'class' => 'LeadJourney',
             'path' => 'modules/LeadJourney/LeadJourney.php',
             'tab' => true,
+        ),
+    ),
+    'language' => array(
+        array(
+            'from' => '<basepath>/language/en_us.lang.php',
+            'to_module' => 'LeadJourney',
+            'language' => 'en_us',
         ),
     ),
 );

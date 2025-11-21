@@ -23,8 +23,24 @@ $installdefs = array(
     'id' => 'funnel_dashboard',
     'copy' => array(
         array(
-            'from' => '<basepath>/modules/FunnelDashboard',
-            'to' => 'modules/FunnelDashboard',
+            'from' => '<basepath>/FunnelDashboard.php',
+            'to' => 'modules/FunnelDashboard/FunnelDashboard.php',
+        ),
+        array(
+            'from' => '<basepath>/vardefs.php',
+            'to' => 'modules/FunnelDashboard/vardefs.php',
+        ),
+        array(
+            'from' => '<basepath>/Menu.php',
+            'to' => 'modules/FunnelDashboard/Menu.php',
+        ),
+        array(
+            'from' => '<basepath>/views',
+            'to' => 'modules/FunnelDashboard/views',
+        ),
+        array(
+            'from' => '<basepath>/language',
+            'to' => 'modules/FunnelDashboard/language',
         ),
     ),
     'beans' => array(
@@ -33,6 +49,13 @@ $installdefs = array(
             'class' => 'FunnelDashboard',
             'path' => 'modules/FunnelDashboard/FunnelDashboard.php',
             'tab' => true,
+        ),
+    ),
+    'language' => array(
+        array(
+            'from' => '<basepath>/language/en_us.lang.php',
+            'to_module' => 'FunnelDashboard',
+            'language' => 'en_us',
         ),
     ),
 );

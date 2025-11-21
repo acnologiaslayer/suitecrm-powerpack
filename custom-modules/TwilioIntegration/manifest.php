@@ -23,16 +23,44 @@ $installdefs = array(
     'id' => 'twilio_integration',
     'copy' => array(
         array(
-            'from' => '<basepath>/modules/TwilioIntegration',
-            'to' => 'modules/TwilioIntegration',
+            'from' => '<basepath>/TwilioIntegration.php',
+            'to' => 'modules/TwilioIntegration/TwilioIntegration.php',
         ),
         array(
-            'from' => '<basepath>/custom/Extension/modules/Contacts/Ext/Vardefs',
-            'to' => 'custom/Extension/modules/Contacts/Ext/Vardefs',
+            'from' => '<basepath>/vardefs.php',
+            'to' => 'modules/TwilioIntegration/vardefs.php',
         ),
         array(
-            'from' => '<basepath>/custom/Extension/modules/Leads/Ext/Vardefs',
-            'to' => 'custom/Extension/modules/Leads/Ext/Vardefs',
+            'from' => '<basepath>/Menu.php',
+            'to' => 'modules/TwilioIntegration/Menu.php',
+        ),
+        array(
+            'from' => '<basepath>/TwilioClient.php',
+            'to' => 'modules/TwilioIntegration/TwilioClient.php',
+        ),
+        array(
+            'from' => '<basepath>/TwilioHooks.php',
+            'to' => 'modules/TwilioIntegration/TwilioHooks.php',
+        ),
+        array(
+            'from' => '<basepath>/logic_hooks.php',
+            'to' => 'modules/TwilioIntegration/logic_hooks.php',
+        ),
+        array(
+            'from' => '<basepath>/views',
+            'to' => 'modules/TwilioIntegration/views',
+        ),
+        array(
+            'from' => '<basepath>/language',
+            'to' => 'modules/TwilioIntegration/language',
+        ),
+        array(
+            'from' => '<basepath>/Extensions/modules/Contacts/Ext/Vardefs/twilio_js.php',
+            'to' => 'custom/Extension/modules/Contacts/Ext/Vardefs/twilio_js.php',
+        ),
+        array(
+            'from' => '<basepath>/Extensions/modules/Leads/Ext/Vardefs/twilio_js.php',
+            'to' => 'custom/Extension/modules/Leads/Ext/Vardefs/twilio_js.php',
         ),
     ),
     'beans' => array(
@@ -43,14 +71,11 @@ $installdefs = array(
             'tab' => true,
         ),
     ),
-    'layoutdefs' => array(
+    'language' => array(
         array(
-            'from' => '<basepath>/custom/Extension/modules/Contacts/Ext/Layoutdefs/twilio_integration.php',
-            'to_module' => 'Contacts',
-        ),
-        array(
-            'from' => '<basepath>/custom/Extension/modules/Leads/Ext/Layoutdefs/twilio_integration.php',
-            'to_module' => 'Leads',
+            'from' => '<basepath>/language/en_us.lang.php',
+            'to_module' => 'TwilioIntegration',
+            'language' => 'en_us',
         ),
     ),
 );
