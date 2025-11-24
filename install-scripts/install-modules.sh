@@ -194,19 +194,6 @@ try {
 "
 
 if [ $? -ne 0 ]; then
-    \$repair->rebuildExtensions();
-    
-    echo \"Quick Repair completed successfully\\n\";
-    exit(0);
-} catch (Exception \$e) {
-    echo \"Warning: Quick Repair error: \" . \$e->getMessage() . \"\\n\";
-    echo \"Continuing anyway...\\n\";
-    exit(0);
-}
-"
-
-if [ $? -ne 0 ]; then
-if [ $? -ne 0 ]; then
     echo "WARNING: Quick Repair had errors but continuing..."
 else
     echo "✓ Quick Repair completed"
@@ -214,23 +201,32 @@ fi
 
 # Create database tables
 echo ""
-echo "Creating database tables..."
+echo "Checking database tables..."
 DB_PORT="${SUITECRM_DATABASE_PORT_NUMBER:-3306}"
 
 # Check if SSL certificate exists and database host requires SSL
-if [ -f "/opt/bitnami/mysql/certs/ca-certificate.crt" ] && [[ "$SUITECRM_DATABASE_HOST" == *"digitalocean.com"* ]]; then
-    SSL_OPTS="--ssl --ssl-ca=/opt/bitnami/mysql/certs/ca-certificate.crt"
-    echo "Using SSL connection to database..."
-elif [ -f "/opt/bitnami/mysql/certs/ca-certificate.crt" ]; then
+SSL_CA_PATH="${MYSQL_CLIENT_SSL_CA_FILE:-/opt/bitnami/mysql/certs/ca-certificate.crt}"
+
+if [ -f "$SSL_CA_PATH" ] && [[ "$SUITECRM_DATABASE_HOST" == *"digitalocean.com"* ]]; then
+    SSL_OPTS="--ssl-ca=$SSL_CA_PATH --ssl-verify-server-cert"
+    echo "Using SSL connection to database with CA: $SSL_CA_PATH"
+elif [ -f "$SSL_CA_PATH" ]; then
     # Try SSL but don't require it
-    SSL_OPTS="--ssl-ca=/opt/bitnami/mysql/certs/ca-certificate.crt"
-    echo "SSL certificate available, attempting SSL connection..."
+    SSL_OPTS="--ssl-ca=$SSL_CA_PATH"
+    echo "SSL certificate available at $SSL_CA_PATH, attempting SSL connection..."
 else
     SSL_OPTS=""
-    echo "Using standard database connection..."
+    echo "Using standard database connection (no SSL cert found at $SSL_CA_PATH)..."
 fi
 
-mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" <<'EOF'
+# Check if tables already exist
+TABLES_EXIST=$(mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$SUITECRM_DATABASE_NAME' AND table_name IN ('twilio_integration', 'lead_journey', 'funnel_dashboard');" 2>/dev/null || echo "0")
+
+if [ "$TABLES_EXIST" = "3" ]; then
+    echo "✓ All module tables already exist, skipping migration"
+else
+    echo "Creating database tables (found $TABLES_EXIST/3 tables)..."
+    mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" <<'EOF'
 
 -- Twilio Integration table
 CREATE TABLE IF NOT EXISTS twilio_integration (
@@ -291,10 +287,11 @@ CREATE TABLE IF NOT EXISTS funnel_dashboard (
 
 EOF
 
-if [ $? -eq 0 ]; then
-    echo "✓ Database tables created successfully"
-else
-    echo "✗ Warning: Database table creation had issues"
+    if [ $? -eq 0 ]; then
+        echo "✓ Database tables created successfully"
+    else
+        echo "✗ Warning: Database table creation had issues"
+    fi
 fi
 
 # Clear all caches

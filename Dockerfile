@@ -6,12 +6,6 @@ USER root
 # Remove readonly modifier from url_port to allow Bitnami to reassign it
 RUN sed -i 's/readonly url_port/url_port/g' /opt/bitnami/scripts/libsuitecrm.sh 2>/dev/null || true
 
-# Download and install DigitalOcean CA certificate for SSL connections
-RUN mkdir -p /opt/bitnami/mysql/certs && \
-    curl -sSL -o /opt/bitnami/mysql/certs/ca-certificate.crt \
-    https://docs.digitalocean.com/_next/static/media/ca-certificate.0d9f5b78.crt \
-    && chmod 644 /opt/bitnami/mysql/certs/ca-certificate.crt
-
 # Install additional dependencies
 RUN apt-get update && apt-get install -y \
     git \

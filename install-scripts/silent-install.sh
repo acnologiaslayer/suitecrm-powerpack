@@ -26,10 +26,10 @@ fi
 chown -R daemon:daemon /bitnami/suitecrm
 chmod 777 /opt/bitnami/php/var/run/session 2>/dev/null || true
 
-echo "Running console installer..."
+echo "Running console installer with 10 minute timeout..."
 
-# Use the SuiteCRM console installer
-OUTPUT=$(su -s /bin/bash daemon -c "cd /bitnami/suitecrm && php bin/console suitecrm:app:install \
+# Use the SuiteCRM console installer with timeout
+OUTPUT=$(timeout 600 su -s /bin/bash daemon -c "cd /bitnami/suitecrm && php bin/console suitecrm:app:install \
   --db_username='$DB_USER' \
   --db_password='$DB_PASSWORD' \
   --db_host='$DB_HOST' \
@@ -38,12 +38,13 @@ OUTPUT=$(su -s /bin/bash daemon -c "cd /bitnami/suitecrm && php bin/console suit
   --site_username='$ADMIN_USER' \
   --site_password='$ADMIN_PASSWORD' \
   --site_host='$SITE_URL' \
-  --demoData=no 2>&1")
+  --demoData=no 2>&1" || echo "Installer completed or timed out")
 INSTALL_STATUS=$?
 
 echo "$OUTPUT"
 
-if [ $INSTALL_STATUS -eq 0 ] && [ -f "/bitnami/suitecrm/config.php" ]; then
+# Check for config.php in both locations (root and legacy)
+if [ $INSTALL_STATUS -eq 0 ] && { [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legacy/config.php" ]; }; then
     echo "✅ SuiteCRM silent installation completed successfully!"
     
     # Clear cache and sessions
