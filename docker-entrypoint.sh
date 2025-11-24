@@ -8,10 +8,46 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
     echo "Copying SuiteCRM files to persistent volume..."
     cp -a /opt/bitnami/suitecrm/. /bitnami/suitecrm/
     
-    # Create custom/Extension directory if it doesn't exist
+    # Create required directories with proper permissions
+    echo "Creating required directories..."
     mkdir -p /bitnami/suitecrm/custom/Extension
+    mkdir -p /bitnami/suitecrm/cache/upload/import
+    mkdir -p /bitnami/suitecrm/cache/images
+    mkdir -p /bitnami/suitecrm/cache/modules
+    mkdir -p /bitnami/suitecrm/cache/themes
+    mkdir -p /bitnami/suitecrm/upload
     
+    # Also create directories in legacy path for the installer
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/upload/import
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/images
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/modules
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/themes
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/layout
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/pdf
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/xml
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/api
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/import
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/dashlets
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/feeds
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/smarty/templates_c
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/smarty/cache
+    mkdir -p /bitnami/suitecrm/public/legacy/upload
+    mkdir -p /bitnami/suitecrm/public/legacy/custom
+    mkdir -p /bitnami/suitecrm/public/legacy/data
+    mkdir -p /bitnami/suitecrm/public/legacy/modules
+    
+    # Set ownership and permissions
+    echo "Setting ownership and permissions..."
     chown -R daemon:daemon /bitnami/suitecrm
+    chmod -R 775 /bitnami/suitecrm
+    chmod -R 777 /bitnami/suitecrm/cache
+    chmod -R 777 /bitnami/suitecrm/public/legacy/cache
+    chmod -R 777 /bitnami/suitecrm/upload
+    chmod -R 777 /bitnami/suitecrm/public/legacy/upload
+    chmod -R 777 /bitnami/suitecrm/public/legacy/custom
+    chmod -R 777 /bitnami/suitecrm/public/legacy/data
+    chmod -R 777 /bitnami/suitecrm/public/legacy/modules
+    
     echo "Files copied successfully"
     
     # Mark that modules need installation after SuiteCRM setup
@@ -26,6 +62,46 @@ chown -R daemon:daemon /opt/bitnami/php/var/run/session 2>/dev/null || true
 # Auto-install SuiteCRM if database credentials are provided and not yet installed
 if [ ! -f "/bitnami/suitecrm/config.php" ] && [ -n "$SUITECRM_DATABASE_HOST" ] && [ "$SUITECRM_SKIP_INSTALL" != "yes" ]; then
     echo "Database configured - running silent installation..."
+    
+    # Ensure all required directories exist with proper permissions before installation
+    echo "Ensuring all required directories exist..."
+    mkdir -p /bitnami/suitecrm/cache/upload/import
+    mkdir -p /bitnami/suitecrm/cache/images
+    mkdir -p /bitnami/suitecrm/cache/modules
+    mkdir -p /bitnami/suitecrm/cache/themes
+    mkdir -p /bitnami/suitecrm/cache/jsLanguage
+    mkdir -p /bitnami/suitecrm/cache/smarty/templates_c
+    mkdir -p /bitnami/suitecrm/upload
+    mkdir -p /bitnami/suitecrm/custom
+    
+    # Critical: Create all directories in legacy path where the installer checks
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/upload/import
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/upload/upgrades
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/images
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/modules
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/themes
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/layout
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/pdf
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/xml
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/api
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/import
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/dashlets
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/feeds
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/jsLanguage
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/smarty/templates_c
+    mkdir -p /bitnami/suitecrm/public/legacy/cache/smarty/cache
+    mkdir -p /bitnami/suitecrm/public/legacy/upload
+    mkdir -p /bitnami/suitecrm/public/legacy/custom
+    mkdir -p /bitnami/suitecrm/public/legacy/data
+    
+    chown -R daemon:daemon /bitnami/suitecrm
+    chmod -R 777 /bitnami/suitecrm/cache
+    chmod -R 777 /bitnami/suitecrm/public/legacy/cache
+    chmod -R 777 /bitnami/suitecrm/upload
+    chmod -R 777 /bitnami/suitecrm/public/legacy/upload
+    chmod -R 777 /bitnami/suitecrm/public/legacy/custom
+    chmod -R 777 /bitnami/suitecrm/public/legacy/data
+    chmod -R 775 /bitnami/suitecrm/custom
     
     # Wait for database to be ready (simple TCP check)
     echo "Waiting for database connection..."
