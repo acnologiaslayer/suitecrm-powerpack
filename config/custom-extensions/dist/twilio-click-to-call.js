@@ -1,7 +1,7 @@
 /**
  * Twilio Click-to-Call for SuiteCRM 8 Angular UI
  * Adds call and SMS buttons next to phone numbers
- * v2.2.1 - Enhanced detection for list views and detail views
+ * v2.2.3 - Fixed list view detection for all rows
  */
 (function() {
     "use strict";
@@ -15,14 +15,14 @@
         callAction: "&action=makecall&phone=",
         smsAction: "&action=sendsms&phone=",
         processedAttr: "data-twilio-processed",
-        // Phone field patterns to match
-        phoneFields: ["phone", "mobile", "fax", "phone_work", "phone_home", "phone_mobile", "phone_other", "phone_fax", "alt_phone"],
-        // Phone number regex - matches international and US formats
-        phoneRegex: /^[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,3}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{0,9}$/
+        // Phone field patterns to match in headers/labels
+        phoneFields: ["phone", "mobile", "fax", "office phone", "phone_work", "phone_home", "phone_mobile", "phone_other", "phone_fax", "alt_phone"],
+        // Phone number regex for validation
+        phoneRegex: /^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$/
     };
     
     function init() {
-        console.log("[Twilio Suite8] Initializing click-to-call v2.2.1...");
+        console.log("[Twilio Suite8] Initializing click-to-call v2.2.3...");
         setTimeout(processPage, 1000);
         observeChanges();
     }
@@ -32,9 +32,9 @@
         cleanupDuplicates();
         
         // Process different view types
-        processListView();
+        processAllPhoneLinks();
+        processListViewByHeader();
         processDetailView();
-        processGenericPhoneElements();
     }
     
     function cleanupDuplicates() {
@@ -48,33 +48,77 @@
         });
     }
     
-    // Process SuiteCRM 8 list view tables
-    function processListView() {
-        // SuiteCRM 8 uses scrm-list-view-table-body or standard tables
-        var tables = document.querySelectorAll("table, scrm-list-view-table-body");
+    // Process all links that look like phone numbers - most reliable method
+    function processAllPhoneLinks() {
+        // Find all links in table cells that contain phone-like text
+        var links = document.querySelectorAll("td a, scrm-field a");
+        
+        links.forEach(function(link) {
+            var text = (link.textContent || "").trim();
+            
+            // Check if this looks like a phone number
+            if (isValidPhone(text)) {
+                var parent = link.closest("td") || link.parentElement;
+                if (parent && !parent.getAttribute(CONFIG.processedAttr)) {
+                    if (!parent.querySelector(".twilio-btn-container")) {
+                        console.log("[Twilio Suite8] Found phone link:", text);
+                        addButtonsAfterLink(link, text);
+                        parent.setAttribute(CONFIG.processedAttr, "true");
+                    }
+                }
+            }
+        });
+        
+        // Also find tel: links
+        var telLinks = document.querySelectorAll("a[href^='tel:']");
+        telLinks.forEach(function(link) {
+            var phone = link.href.replace("tel:", "").trim();
+            var parent = link.closest("td") || link.parentElement;
+            if (parent && !parent.getAttribute(CONFIG.processedAttr) && isValidPhone(phone)) {
+                if (!parent.querySelector(".twilio-btn-container")) {
+                    addButtonsAfterLink(link, phone);
+                    parent.setAttribute(CONFIG.processedAttr, "true");
+                }
+            }
+        });
+    }
+    
+    // Process list view by finding phone columns from headers
+    function processListViewByHeader() {
+        var tables = document.querySelectorAll("table");
         
         tables.forEach(function(table) {
-            var phoneColIndexes = [];
-            var headers = table.querySelectorAll("th, scrm-sort-button");
+            // Find header row
+            var headerRow = table.querySelector("thead tr, tr:first-child");
+            if (!headerRow) return;
             
+            var headers = headerRow.querySelectorAll("th, td");
+            var phoneColIndexes = [];
+            
+            // Find which columns contain phone fields
             headers.forEach(function(th, index) {
-                var text = (th.textContent || th.innerText || "").toLowerCase();
+                var text = (th.textContent || th.innerText || "").toLowerCase().trim();
                 for (var i = 0; i < CONFIG.phoneFields.length; i++) {
-                    if (text.indexOf(CONFIG.phoneFields[i].replace("_", " ")) >= 0 || 
-                        text.indexOf(CONFIG.phoneFields[i]) >= 0) {
+                    var fieldName = CONFIG.phoneFields[i].toLowerCase();
+                    if (text.indexOf(fieldName) >= 0 || text === fieldName) {
                         phoneColIndexes.push(index);
+                        console.log("[Twilio Suite8] Found phone column at index", index, ":", text);
                         break;
                     }
                 }
             });
             
+            // Process data rows
             if (phoneColIndexes.length > 0) {
-                var rows = table.querySelectorAll("tbody tr, scrm-table-body-entry");
-                rows.forEach(function(row) {
-                    var cells = row.querySelectorAll("td, scrm-field");
+                var rows = table.querySelectorAll("tbody tr");
+                console.log("[Twilio Suite8] Processing", rows.length, "rows");
+                
+                rows.forEach(function(row, rowIndex) {
+                    var cells = row.querySelectorAll("td");
+                    
                     phoneColIndexes.forEach(function(colIndex) {
                         var cell = cells[colIndex];
-                        if (cell) {
+                        if (cell && !cell.getAttribute(CONFIG.processedAttr)) {
                             processPhoneCell(cell);
                         }
                     });
@@ -85,9 +129,6 @@
     
     // Process SuiteCRM 8 detail/record view
     function processDetailView() {
-        // Look for phone fields in detail view panels
-        // SuiteCRM 8 uses scrm-field components with field names in attributes or parent elements
-        
         // Method 1: Find field labels that indicate phone fields
         var labels = document.querySelectorAll("label, .field-label, scrm-label, [class*='label']");
         labels.forEach(function(label) {
@@ -103,7 +144,6 @@
             }
             
             if (isPhoneField) {
-                // Find the associated value element
                 var parent = label.closest(".form-group, .field-container, .row, scrm-field-layout, [class*='field']");
                 if (parent) {
                     var valueEl = parent.querySelector("scrm-field, .field-value, input[type='tel'], [class*='value'], span:not(.twilio-btn-container)");
@@ -112,7 +152,6 @@
                     }
                 }
                 
-                // Also check next sibling
                 var sibling = label.nextElementSibling;
                 if (sibling && !sibling.classList.contains("twilio-btn-container")) {
                     processPhoneCell(sibling);
@@ -138,34 +177,9 @@
         });
     }
     
-    // Process any element that might contain a phone number
-    function processGenericPhoneElements() {
-        // Find inputs with tel type
-        var telInputs = document.querySelectorAll("input[type='tel']");
-        telInputs.forEach(function(input) {
-            if (input.value && isValidPhone(input.value)) {
-                var parent = input.parentElement;
-                if (parent && !parent.querySelector(".twilio-btn-container")) {
-                    addButtonsAfter(input, input.value);
-                }
-            }
-        });
-        
-        // Find links with tel: protocol
-        var telLinks = document.querySelectorAll("a[href^='tel:']");
-        telLinks.forEach(function(link) {
-            var phone = link.href.replace("tel:", "").trim();
-            var parent = link.parentElement;
-            if (parent && !parent.querySelector(".twilio-btn-container") && isValidPhone(phone)) {
-                addButtonsAfter(link, phone);
-            }
-        });
-    }
-    
     function processPhoneCell(cell) {
         if (!cell || cell.getAttribute(CONFIG.processedAttr)) return;
         
-        // Skip if already has buttons
         if (cell.querySelector(".twilio-btn-container")) {
             cell.setAttribute(CONFIG.processedAttr, "true");
             return;
@@ -174,8 +188,15 @@
         var phone = extractPhoneNumber(cell);
         
         if (phone && isValidPhone(phone)) {
-            console.log("[Twilio Suite8] Found phone:", phone);
-            addButtons(cell, phone);
+            console.log("[Twilio Suite8] Found phone in cell:", phone);
+            
+            // Try to add after a link if one exists
+            var link = cell.querySelector("a");
+            if (link) {
+                addButtonsAfterLink(link, phone);
+            } else {
+                addButtons(cell, phone);
+            }
             cell.setAttribute(CONFIG.processedAttr, "true");
         }
     }
@@ -207,8 +228,6 @@
         btns.forEach(function(b) { b.remove(); });
         
         var text = (clone.textContent || clone.innerText || "").trim();
-        
-        // Clean up the text
         text = text.replace(/\s+/g, " ").trim();
         
         if (isValidPhone(text)) {
@@ -216,8 +235,8 @@
         }
         
         // Try to extract phone from mixed content
-        var phoneMatch = text.match(/[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,3}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{0,9}/);
-        if (phoneMatch && phoneMatch[0].replace(/\D/g, "").length >= 7) {
+        var phoneMatch = text.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+        if (phoneMatch) {
             return phoneMatch[0].trim();
         }
         
@@ -226,8 +245,11 @@
     
     function isValidPhone(str) {
         if (!str || typeof str !== "string") return false;
-        var cleaned = str.replace(/[\s\-().+]/g, "");
-        return cleaned.length >= 7 && cleaned.length <= 20 && /^\d+$/.test(cleaned);
+        // Remove all non-digit characters except + for country code
+        var cleaned = str.replace(/[\s\-().]/g, "");
+        // Must have 7-15 digits and be mostly numeric
+        var digitCount = (cleaned.match(/\d/g) || []).length;
+        return digitCount >= 7 && digitCount <= 15 && /^[\+]?\d+$/.test(cleaned);
     }
     
     function addButtons(element, phone) {
@@ -237,14 +259,19 @@
         element.appendChild(container);
     }
     
-    function addButtonsAfter(element, phone) {
-        var parent = element.parentElement;
-        if (!parent || parent.querySelector(".twilio-btn-container")) return;
+    function addButtonsAfterLink(link, phone) {
+        var parent = link.parentElement;
+        if (!parent) return;
+        
+        // Check if buttons already exist in this cell/parent
+        var cell = link.closest("td") || parent;
+        if (cell.querySelector(".twilio-btn-container")) return;
         
         var container = createButtonContainer(phone);
         
-        if (element.nextSibling) {
-            parent.insertBefore(container, element.nextSibling);
+        // Insert after the link
+        if (link.nextSibling) {
+            parent.insertBefore(container, link.nextSibling);
         } else {
             parent.appendChild(container);
         }
@@ -296,7 +323,6 @@
         
         var debounceTimer;
         var observer = new MutationObserver(function(mutations) {
-            // Only process if there are relevant changes
             var shouldProcess = mutations.some(function(m) {
                 return m.addedNodes.length > 0 || m.type === "characterData";
             });
