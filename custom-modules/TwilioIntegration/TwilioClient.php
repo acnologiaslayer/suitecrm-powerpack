@@ -136,8 +136,8 @@ class TwilioClient {
      */
     private function getTwiMLUrl() {
         global $sugar_config;
-        $siteUrl = $sugar_config['site_url'];
-        return $siteUrl . '/index.php?module=TwilioIntegration&action=twiml';
+        $siteUrl = rtrim($sugar_config['site_url'], '/');
+        return $siteUrl . '/legacy/index.php?module=TwilioIntegration&action=twiml';
     }
     
     /**
@@ -145,8 +145,8 @@ class TwilioClient {
      */
     private function getWebhookUrl() {
         global $sugar_config;
-        $siteUrl = $sugar_config['site_url'];
-        return $siteUrl . '/index.php?module=TwilioIntegration&action=webhook';
+        $siteUrl = rtrim($sugar_config['site_url'], '/');
+        return $siteUrl . '/legacy/index.php?module=TwilioIntegration&action=webhook';
     }
     
     /**
@@ -154,7 +154,7 @@ class TwilioClient {
      */
     private function getSMSWebhookUrl() {
         global $sugar_config;
-        $siteUrl = $sugar_config['site_url'];
-        return $siteUrl . '/index.php?module=TwilioIntegration&action=sms_webhook';
+        $siteUrl = rtrim($sugar_config['site_url'], '/');
+        return $siteUrl . '/legacy/index.php?module=TwilioIntegration&action=sms_webhook';
     }
 }
