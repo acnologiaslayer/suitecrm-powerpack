@@ -46,11 +46,13 @@ This guide explains how to safely deploy Twilio Integration v2.4.0 to production
 
 #### Automated Upgrade Script
 ```bash
-# Download upgrade script
-curl -O https://raw.githubusercontent.com/yourusername/suitecrm-powerpack/main/upgrade-docker.sh
-chmod +x upgrade-docker.sh
+# Option A: If you have the repository locally
+cd /path/to/suitecrm
+./upgrade-docker.sh suitecrm
 
-# Run upgrade
+# Option B: Download from GitHub
+curl -O https://raw.githubusercontent.com/acnologiaslayer/suitecrm-powerpack/main/upgrade-docker.sh
+chmod +x upgrade-docker.sh
 ./upgrade-docker.sh suitecrm
 
 # The script will:
