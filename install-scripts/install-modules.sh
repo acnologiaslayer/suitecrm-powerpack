@@ -58,6 +58,12 @@ if [ -d "/bitnami/suitecrm/custom/Extension" ]; then
     cp -r /bitnami/suitecrm/custom/Extension/* /bitnami/suitecrm/public/legacy/custom/Extension/ 2>/dev/null || true
 fi
 
+# Create ActionDefs directory and copy custom ACL action definitions
+mkdir -p /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/ActionDefs
+if [ -f "/bitnami/suitecrm/custom/Extension/application/Ext/ActionDefs/PowerPackActions.php" ]; then
+    cp /bitnami/suitecrm/custom/Extension/application/Ext/ActionDefs/PowerPackActions.php /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/ActionDefs/
+fi
+
 # Create compiled language extension for dropdown lists
 mkdir -p /bitnami/suitecrm/public/legacy/custom/application/Ext/Language
 cat > /bitnami/suitecrm/public/legacy/custom/application/Ext/Language/en_us.lang.ext.php << 'PHPEOF'
@@ -368,6 +374,55 @@ EOF
 
     echo "Database tables and custom fields setup complete"
 fi
+
+# Register custom ACL actions for FunnelDashboard
+echo ""
+echo "Registering ACL actions for role-based permissions..."
+
+# Check if custom actions exist
+ACTION_EXISTS=$(mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "
+    SELECT COUNT(*) FROM acl_actions
+    WHERE category='FunnelDashboard' AND name='crodashboard' AND deleted=0
+" 2>/dev/null || echo "0")
+
+if [ "$ACTION_EXISTS" = "0" ]; then
+    echo "  Adding custom dashboard ACL actions..."
+    mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" <<'EOF'
+-- Custom ACL actions for FunnelDashboard role-based dashboards
+-- These will appear in Admin -> Role Management
+
+INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
+SELECT UUID(), NOW(), NOW(), '1', '1', 'crodashboard', 'FunnelDashboard', 'module', -99, 0
+FROM DUAL WHERE NOT EXISTS (
+    SELECT 1 FROM acl_actions WHERE category='FunnelDashboard' AND name='crodashboard' AND deleted=0
+);
+
+INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
+SELECT UUID(), NOW(), NOW(), '1', '1', 'salesopsdashboard', 'FunnelDashboard', 'module', -99, 0
+FROM DUAL WHERE NOT EXISTS (
+    SELECT 1 FROM acl_actions WHERE category='FunnelDashboard' AND name='salesopsdashboard' AND deleted=0
+);
+
+INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
+SELECT UUID(), NOW(), NOW(), '1', '1', 'bdmdashboard', 'FunnelDashboard', 'module', -99, 0
+FROM DUAL WHERE NOT EXISTS (
+    SELECT 1 FROM acl_actions WHERE category='FunnelDashboard' AND name='bdmdashboard' AND deleted=0
+);
+
+INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
+SELECT UUID(), NOW(), NOW(), '1', '1', 'dashboard', 'FunnelDashboard', 'module', 90, 0
+FROM DUAL WHERE NOT EXISTS (
+    SELECT 1 FROM acl_actions WHERE category='FunnelDashboard' AND name='dashboard' AND deleted=0
+);
+
+EOF
+    echo "  ✓ ACL actions registered"
+else
+    echo "  ACL actions already exist"
+fi
+
+echo ""
+echo "Permissions can be managed in Admin -> Role Management -> FunnelDashboard"
 
 # Clear all caches
 echo ""

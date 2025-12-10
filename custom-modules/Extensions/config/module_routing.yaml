@@ -1,0 +1,35 @@
+# PowerPack Module Routing for SuiteCRM 8
+# This file adds routing configuration for custom modules
+# Merge with: config/services/module/module_routing.yaml
+
+parameters:
+  legacy.module_routing:
+    # Funnel Dashboard - Sales analytics and role-based dashboards
+    funnel-dashboard:
+      index: true
+      list: true
+      record: false
+
+    # Sales Targets - BDM/Team performance tracking
+    sales-targets:
+      index: true
+      list: true
+      record: true
+
+    # Packages - Service offerings
+    packages:
+      index: true
+      list: true
+      record: true
+
+    # Twilio Integration - Click-to-call and SMS
+    twilio-integration:
+      index: true
+      list: true
+      record: false
+
+    # Lead Journey - Timeline tracking
+    lead-journey:
+      index: true
+      list: true
+      record: true

@@ -82,3 +82,9 @@ $app_list_strings['sales_alert_status_list'] = array(
     'resolved' => 'Resolved',
     'dismissed' => 'Dismissed',
 );
+
+// ACL Action Labels for Role Management UI
+$app_strings['LBL_ACTION_CRO_DASHBOARD'] = 'CRO Dashboard';
+$app_strings['LBL_ACTION_SALESOPS_DASHBOARD'] = 'Sales Ops Dashboard';
+$app_strings['LBL_ACTION_BDM_DASHBOARD'] = 'BDM Dashboard';
+$app_strings['LBL_ACTION_DASHBOARD'] = 'Dashboard';
