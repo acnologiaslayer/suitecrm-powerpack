@@ -184,6 +184,40 @@ YAMLEOF
     fi
 fi
 
+# Add PowerPack modules to SuiteCRM 8 module name map (required for frontend/legacy name mapping)
+MODULE_NAME_MAP="/bitnami/suitecrm/public/legacy/include/portability/module_name_map.php"
+if [ -f "$MODULE_NAME_MAP" ]; then
+    if ! grep -q "FunnelDashboard" "$MODULE_NAME_MAP"; then
+        cat >> "$MODULE_NAME_MAP" << 'MAPEOF'
+
+// PowerPack Modules
+$module_name_map["FunnelDashboard"] = [
+    "frontend" => "funnel-dashboard",
+    "core" => "FunnelDashboard"
+];
+$module_name_map["SalesTargets"] = [
+    "frontend" => "sales-targets",
+    "core" => "SalesTargets"
+];
+$module_name_map["Packages"] = [
+    "frontend" => "packages",
+    "core" => "Packages"
+];
+$module_name_map["TwilioIntegration"] = [
+    "frontend" => "twilio-integration",
+    "core" => "TwilioIntegration"
+];
+$module_name_map["LeadJourney"] = [
+    "frontend" => "lead-journey",
+    "core" => "LeadJourney"
+];
+MAPEOF
+        echo "  ✓ Module name mappings added"
+    else
+        echo "  Module name mappings already configured"
+    fi
+fi
+
 echo "✓ Module registration completed"
 
 # Clear cache to ensure new modules are loaded

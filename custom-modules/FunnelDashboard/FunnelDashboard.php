@@ -23,9 +23,7 @@ class FunnelDashboard extends Basic {
     }
 
     public function bean_implements($interface){
-        switch($interface){
-            case 'ACL': return true;
-        }
+        // Disable ACL for this module - access controlled by SuiteCRM 8 navigation
         return false;
     }
     
