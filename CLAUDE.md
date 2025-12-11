@@ -4,7 +4,7 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v2.5.9
+**Current Version**: v2.5.10
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
 
 This is a Docker-based SuiteCRM extension with five custom modules for sales operations:

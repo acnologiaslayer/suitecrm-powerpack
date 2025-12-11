@@ -1,5 +1,6 @@
 <?php
-if(!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
+// PowerPack Sales CRM Dropdown Lists
+// Note: No die() check here - this file gets compiled into en_us.lang.ext.php
 
 // Funnel Types - The three sales verticals
 $app_list_strings['funnel_type_list'] = array(
