@@ -150,6 +150,40 @@ PHPEOF
 
 chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/
 
+# Add PowerPack modules to SuiteCRM 8 module routing
+echo "Adding modules to SuiteCRM 8 navigation..."
+MODULE_ROUTING_FILE="/bitnami/suitecrm/config/services/module/module_routing.yaml"
+if [ -f "$MODULE_ROUTING_FILE" ]; then
+    # Check if our modules are already added
+    if ! grep -q "funnel-dashboard:" "$MODULE_ROUTING_FILE"; then
+        cat >> "$MODULE_ROUTING_FILE" << 'YAMLEOF'
+    funnel-dashboard:
+      index: true
+      list: true
+      record: false
+    sales-targets:
+      index: true
+      list: true
+      record: true
+    packages:
+      index: true
+      list: true
+      record: true
+    twilio-integration:
+      index: true
+      list: true
+      record: false
+    lead-journey:
+      index: true
+      list: true
+      record: true
+YAMLEOF
+        echo "  ✓ Module routing configured"
+    else
+        echo "  Module routing already configured"
+    fi
+fi
+
 echo "✓ Module registration completed"
 
 # Clear cache to ensure new modules are loaded
