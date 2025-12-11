@@ -181,6 +181,34 @@ if [ -f "/bitnami/suitecrm/config.php" ] && [ -f "/bitnami/suitecrm/.modules_pen
     fi
 fi
 
+# UPGRADE SUPPORT: Always sync critical module files from image to volume
+# This ensures upgrades apply new module configurations
+if [ -f "/bitnami/suitecrm/config.php" ]; then
+    echo "Syncing PowerPack module files..."
+
+    # Copy updated module files from image
+    for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages; do
+        if [ -d "/opt/bitnami/suitecrm/modules/$MODULE" ]; then
+            cp -r "/opt/bitnami/suitecrm/modules/$MODULE" "/bitnami/suitecrm/public/legacy/modules/" 2>/dev/null || true
+        fi
+    done
+
+    # Copy updated extension files
+    if [ -d "/opt/bitnami/suitecrm/custom/Extension" ]; then
+        cp -r /opt/bitnami/suitecrm/custom/Extension/* /bitnami/suitecrm/public/legacy/custom/Extension/ 2>/dev/null || true
+    fi
+
+    # Re-run install script to update language files, module mappings, etc.
+    echo "Updating module configurations..."
+    /opt/bitnami/scripts/suitecrm/install-modules.sh 2>/dev/null || true
+
+    # Fix permissions
+    chown -R daemon:daemon /bitnami/suitecrm/public/legacy/modules/ 2>/dev/null || true
+    chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/ 2>/dev/null || true
+
+    echo "Module sync complete"
+fi
+
 # Disable HTTPS vhost since SSL is handled by reverse proxy
 if [ -f "/opt/bitnami/apache/conf/vhosts/suitecrm-https-vhost.conf" ]; then
     echo "Disabling HTTPS vhost (SSL handled by reverse proxy)..."
