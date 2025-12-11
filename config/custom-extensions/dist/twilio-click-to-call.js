@@ -1,7 +1,7 @@
 /**
  * Twilio Click-to-Call for SuiteCRM 8 Angular UI
  * Adds call and SMS buttons next to phone numbers
- * v2.2.5 - Simplified and more robust detection
+ * v2.3.0 - International phone number support
  */
 (function() {
     "use strict";
@@ -17,7 +17,7 @@
         phonePattern: /^[\+]?1?[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}$/
     };
     
-    console.log("[Twilio CTC] Script loaded v2.2.5");
+    console.log("[Twilio CTC] Script loaded v2.3.0");
     
     // Main function to scan and add buttons
     function scanForPhoneNumbers() {
@@ -109,14 +109,17 @@
         // Remove all non-digits to count
         var digits = text.replace(/\D/g, "");
         
-        // Must have 10-11 digits (with or without country code)
-        if (digits.length < 10 || digits.length > 11) return false;
+        // International: 10-15 digits (covers most countries)
+        // US: 10 digits, International with country code: 11-15 digits
+        if (digits.length < 10 || digits.length > 15) return false;
         
-        // Must match phone-like pattern
-        return CONFIG.phonePattern.test(text) || 
-               /^\d{10,11}$/.test(digits) ||
+        // Match international format (+country code) or standard formats
+        return /^\+?\d{10,15}$/.test(text.replace(/[-.\s()]/g, "")) ||
+               CONFIG.phonePattern.test(text) || 
+               /^\d{10,15}$/.test(digits) ||
                /^\(\d{3}\)\s*\d{3}[-.]?\d{4}$/.test(text) ||
-               /^\d{3}[-.\s]\d{3}[-.\s]\d{4}$/.test(text);
+               /^\d{3}[-.\s]\d{3}[-.\s]\d{4}$/.test(text) ||
+               /^\+\d{1,4}[-.\s]?\d{6,14}$/.test(text);
     }
     
     function addButtonsToElement(element, phone) {
