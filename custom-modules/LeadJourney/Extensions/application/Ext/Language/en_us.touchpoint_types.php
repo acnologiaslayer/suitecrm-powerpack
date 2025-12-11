@@ -1,7 +1,6 @@
 <?php
-if (!defined('sugarEntry') || !sugarEntry) {
-    die('Not A Valid Entry Point');
-}
+// LeadJourney Touchpoint Types
+// Note: No die() check - this file is compiled into en_us.lang.ext.php
 
 // Touchpoint types for Lead Journey module
 $app_list_strings['touchpoint_type_list'] = array(
