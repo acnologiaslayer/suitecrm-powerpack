@@ -23,7 +23,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 NEW_VERSION="v2.4.0"
-IMAGE_NAME="mahir009/suitecrm-powerpack"
+IMAGE_NAME="sakib9029/suitecrm-powerpack"
 CONTAINER_NAME="${1:-suitecrm}"  # Use first argument or default to 'suitecrm'
 BACKUP_DIR="./backups/$(date +%Y%m%d_%H%M%S)"
 
