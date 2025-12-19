@@ -1,7 +1,7 @@
 /**
  * Verbacall Integration for SuiteCRM 8 Angular UI
  * Adds Sign-up Link and Payment Link buttons to Lead detail pages
- * v1.0.0
+ * v1.0.1 - Fixed insertion point selectors for SuiteCRM 8 record view
  */
 (function() {
     "use strict";
@@ -24,7 +24,7 @@
         dropdownIcon: "width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;"
     };
 
-    console.log("[Verbacall] Script loaded v1.0.0");
+    console.log("[Verbacall] Script loaded v1.0.1");
 
     function getLeadIdFromUrl() {
         var hash = window.location.hash;
@@ -114,44 +114,52 @@
         // Don't add if already exists
         if (document.getElementById("verbacall-panel")) return;
 
-        // Find the right place to insert the panel
-        // Try different selectors for SuiteCRM 8 Angular UI
-        var insertionPoints = [
-            // Record detail header area
-            ".record-view-container",
-            "scrm-record-container",
-            ".record-container",
-            // Below subnavbar
-            "scrm-subnavbar + *",
-            // Main content area
-            "main.main-container",
-            ".record-header",
-            // Fallback to first card/panel
-            ".card-body",
-            ".panel-body"
-        ];
+        console.log("[Verbacall] Looking for insertion point...");
 
-        var targetElement = null;
-        for (var i = 0; i < insertionPoints.length; i++) {
-            targetElement = document.querySelector(insertionPoints[i]);
-            if (targetElement) break;
-        }
-
-        if (!targetElement) {
-            console.log("[Verbacall] Could not find insertion point, will retry...");
+        // Strategy 1: Insert after the record-view-hr-container (best position)
+        var hrContainer = document.querySelector(".record-view-hr-container");
+        if (hrContainer) {
+            console.log("[Verbacall] Found .record-view-hr-container");
+            var panel = createVerbacallPanel(leadId);
+            panel.style.cssText = STYLES.panel + "margin:16px 24px 0 24px;";
+            hrContainer.parentNode.insertBefore(panel, hrContainer.nextSibling);
+            console.log("[Verbacall] Panel added after hr-container");
             return;
         }
 
-        var panel = createVerbacallPanel(leadId);
-
-        // Insert at the beginning of the target
-        if (targetElement.firstChild) {
-            targetElement.insertBefore(panel, targetElement.firstChild);
-        } else {
-            targetElement.appendChild(panel);
+        // Strategy 2: Insert at start of .record-view-container
+        var recordViewContainer = document.querySelector(".record-view-container");
+        if (recordViewContainer) {
+            console.log("[Verbacall] Found .record-view-container");
+            var panel = createVerbacallPanel(leadId);
+            panel.style.cssText = STYLES.panel + "margin:0 0 16px 0;";
+            if (recordViewContainer.firstChild) {
+                recordViewContainer.insertBefore(panel, recordViewContainer.firstChild);
+            } else {
+                recordViewContainer.appendChild(panel);
+            }
+            console.log("[Verbacall] Panel added to record-view-container");
+            return;
         }
 
-        console.log("[Verbacall] Panel added to page");
+        // Strategy 3: Insert inside .record-view
+        var recordView = document.querySelector(".record-view");
+        if (recordView) {
+            console.log("[Verbacall] Found .record-view");
+            var panel = createVerbacallPanel(leadId);
+            panel.style.cssText = STYLES.panel + "margin:16px 24px;";
+            // Insert after the sticky header
+            var stickyHeader = recordView.querySelector(".record-view-position-sticky");
+            if (stickyHeader && stickyHeader.nextSibling) {
+                recordView.insertBefore(panel, stickyHeader.nextSibling.nextSibling);
+            } else {
+                recordView.appendChild(panel);
+            }
+            console.log("[Verbacall] Panel added to record-view");
+            return;
+        }
+
+        console.log("[Verbacall] Could not find insertion point, will retry...");
     }
 
     function addActionsDropdownItems(leadId) {
