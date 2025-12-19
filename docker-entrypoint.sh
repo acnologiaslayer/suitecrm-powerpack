@@ -61,6 +61,28 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
         chown daemon:daemon /bitnami/suitecrm/public/legacy/twilio_webhook.php
     fi
 
+    # Copy Notification webhook to legacy root (must be accessible without auth)
+    if [ -f "/opt/bitnami/suitecrm/modules/Webhooks/notification_webhook.php" ]; then
+        echo "Installing Notification webhook..."
+        cp /opt/bitnami/suitecrm/modules/Webhooks/notification_webhook.php /bitnami/suitecrm/public/legacy/notification_webhook.php
+        chown daemon:daemon /bitnami/suitecrm/public/legacy/notification_webhook.php
+    fi
+
+    # Copy notification WebSocket client JS
+    if [ -f "/opt/bitnami/suitecrm/dist/notification-ws.js" ]; then
+        echo "Installing Notification WebSocket client..."
+        cp /opt/bitnami/suitecrm/dist/notification-ws.js /bitnami/suitecrm/public/notification-ws.js
+        chown daemon:daemon /bitnami/suitecrm/public/notification-ws.js
+
+        # Inject script tag into index.html if not already present
+        if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
+            if ! grep -q "notification-ws.js" /bitnami/suitecrm/public/dist/index.html; then
+                echo "Injecting notification WebSocket client into Angular UI..."
+                sed -i 's|</body>|<script src="notification-ws.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            fi
+        fi
+    fi
+
     # Set ownership and permissions
     echo "Setting ownership and permissions..."
     chown -R daemon:daemon /bitnami/suitecrm
@@ -209,7 +231,7 @@ if [ -f "/bitnami/suitecrm/config.php" ]; then
     echo "Syncing PowerPack module files..."
 
     # Copy updated module files from image (clean copy - remove old first)
-    for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages; do
+    for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub; do
         if [ -d "/opt/bitnami/suitecrm/modules/$MODULE" ]; then
             # Remove old module directory to ensure clean copy
             rm -rf "/bitnami/suitecrm/public/legacy/modules/$MODULE" 2>/dev/null || true
@@ -234,6 +256,19 @@ if [ -f "/bitnami/suitecrm/config.php" ]; then
         cp /opt/bitnami/suitecrm/modules/TwilioIntegration/twilio_webhook.php /bitnami/suitecrm/public/legacy/twilio_webhook.php 2>/dev/null || true
         chown daemon:daemon /bitnami/suitecrm/public/legacy/twilio_webhook.php 2>/dev/null || true
         echo "Twilio webhook copied to legacy root"
+    fi
+
+    # Copy Notification webhook to legacy root
+    if [ -f "/opt/bitnami/suitecrm/modules/Webhooks/notification_webhook.php" ]; then
+        cp /opt/bitnami/suitecrm/modules/Webhooks/notification_webhook.php /bitnami/suitecrm/public/legacy/notification_webhook.php 2>/dev/null || true
+        chown daemon:daemon /bitnami/suitecrm/public/legacy/notification_webhook.php 2>/dev/null || true
+        echo "Notification webhook copied to legacy root"
+    fi
+
+    # Sync notification WebSocket client JS
+    if [ -f "/opt/bitnami/suitecrm/dist/notification-ws.js" ]; then
+        cp /opt/bitnami/suitecrm/dist/notification-ws.js /bitnami/suitecrm/public/notification-ws.js 2>/dev/null || true
+        chown daemon:daemon /bitnami/suitecrm/public/notification-ws.js 2>/dev/null || true
     fi
 
     # Re-run install script to update language files, module mappings, etc.
@@ -264,6 +299,27 @@ sed -i 's|ServerName www.example.com|ServerName localhost|g' /opt/bitnami/apache
 
 # Set required environment variables
 export BITNAMI_APP_NAME="suitecrm"
+
+# Start WebSocket notification server in background (if Node.js and server exist)
+if [ -f "/opt/bitnami/suitecrm/notification-websocket/server.js" ] && command -v node &> /dev/null; then
+    echo "Starting WebSocket notification server on port 3001..."
+
+    # Set environment variables for WebSocket server
+    export DB_HOST="${SUITECRM_DATABASE_HOST:-localhost}"
+    export DB_PORT="${SUITECRM_DATABASE_PORT_NUMBER:-3306}"
+    export DB_USER="${SUITECRM_DATABASE_USER:-suitecrm}"
+    export DB_PASSWORD="${SUITECRM_DATABASE_PASSWORD:-}"
+    export DB_NAME="${SUITECRM_DATABASE_NAME:-suitecrm}"
+    export JWT_SECRET="${NOTIFICATION_JWT_SECRET:-default-secret-change-me}"
+    export WS_PORT="${NOTIFICATION_WS_PORT:-3001}"
+
+    # Start WebSocket server in background
+    cd /opt/bitnami/suitecrm/notification-websocket
+    node server.js >> /var/log/notification-ws.log 2>&1 &
+    WS_PID=$!
+    echo "WebSocket server started (PID: $WS_PID)"
+    cd /
+fi
 
 # Start Apache
 exec /opt/bitnami/scripts/apache/run.sh

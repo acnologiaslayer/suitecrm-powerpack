@@ -13,7 +13,7 @@ if [ ! -f "/bitnami/suitecrm/public/legacy/config.php" ]; then
 fi
 
 # Verify modules exist
-for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages; do
+for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub; do
     if [ ! -f "/bitnami/suitecrm/modules/$MODULE/$MODULE.php" ]; then
         echo "ERROR: Module $MODULE not found at /bitnami/suitecrm/modules/$MODULE/"
         exit 1
@@ -33,7 +33,7 @@ mkdir -p /bitnami/suitecrm/public/legacy/custom/modules
 
 # Copy module files to legacy directory
 echo "Copying module files to legacy directory..."
-for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages; do
+for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub; do
     if [ -d "/bitnami/suitecrm/modules/$MODULE" ]; then
         echo "  Copying $MODULE..."
         cp -r "/bitnami/suitecrm/modules/$MODULE" "/bitnami/suitecrm/public/legacy/modules/"
@@ -185,6 +185,8 @@ $app_list_strings['moduleList']['SalesTargets'] = 'Sales Targets';
 $app_list_strings['moduleList']['Packages'] = 'Packages';
 $app_list_strings['moduleList']['TwilioIntegration'] = 'Twilio Integration';
 $app_list_strings['moduleList']['LeadJourney'] = 'Lead Journey';
+$app_list_strings['moduleList']['Webhooks'] = 'Webhooks';
+$app_list_strings['moduleList']['NotificationHub'] = 'Notification Hub';
 
 // ACL Action Labels for Role Management UI
 $app_strings['LBL_ACTION_CRO_DASHBOARD'] = 'CRO Dashboard';
@@ -220,6 +222,14 @@ $moduleList[] = 'SalesTargets';
 $beanList['Packages'] = 'Packages';
 $beanFiles['Packages'] = 'modules/Packages/Packages.php';
 $moduleList[] = 'Packages';
+
+$beanList['Webhooks'] = 'Webhooks';
+$beanFiles['Webhooks'] = 'modules/Webhooks/Webhooks.php';
+$moduleList[] = 'Webhooks';
+
+$beanList['NotificationHub'] = 'NotificationHub';
+$beanFiles['NotificationHub'] = 'modules/NotificationHub/NotificationHub.php';
+$moduleList[] = 'NotificationHub';
 PHPEOF
 
 # Create the compiled extension file - SuiteCRM loads modules.ext.php (not Include.ext.php)
@@ -245,6 +255,14 @@ $moduleList[] = 'SalesTargets';
 $beanList['Packages'] = 'Packages';
 $beanFiles['Packages'] = 'modules/Packages/Packages.php';
 $moduleList[] = 'Packages';
+
+$beanList['Webhooks'] = 'Webhooks';
+$beanFiles['Webhooks'] = 'modules/Webhooks/Webhooks.php';
+$moduleList[] = 'Webhooks';
+
+$beanList['NotificationHub'] = 'NotificationHub';
+$beanFiles['NotificationHub'] = 'modules/NotificationHub/NotificationHub.php';
+$moduleList[] = 'NotificationHub';
 PHPEOF
 
 chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/
@@ -293,6 +311,14 @@ ${SPACES}lead-journey:
 ${SPACES2}index: true
 ${SPACES2}list: true
 ${SPACES2}record: true
+${SPACES}webhooks:
+${SPACES2}index: true
+${SPACES2}list: true
+${SPACES2}record: false
+${SPACES}notification-hub:
+${SPACES2}index: true
+${SPACES2}list: true
+${SPACES2}record: false
 YAMLEOF
         
         # Validate YAML syntax (if python3 available)
@@ -340,6 +366,14 @@ $module_name_map["LeadJourney"] = [
     "frontend" => "lead-journey",
     "core" => "LeadJourney"
 ];
+$module_name_map["Webhooks"] = [
+    "frontend" => "webhooks",
+    "core" => "Webhooks"
+];
+$module_name_map["NotificationHub"] = [
+    "frontend" => "notification-hub",
+    "core" => "NotificationHub"
+];
 MAPEOF
         echo "  ✓ Module name mappings added"
     else
@@ -385,12 +419,12 @@ fi
 MYSQL_FLAGS="-h$SUITECRM_DATABASE_HOST -P$DB_PORT -u$SUITECRM_DATABASE_USER -p$SUITECRM_DATABASE_PASSWORD $SSL_OPTS $SUITECRM_DATABASE_NAME"
 
 # Check if tables already exist
-TABLES_EXIST=$(mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$SUITECRM_DATABASE_NAME' AND table_name IN ('twilio_integration', 'twilio_audit_log', 'lead_journey', 'funnel_dashboard', 'sales_targets', 'packages');" 2>/dev/null || echo "0")
+TABLES_EXIST=$(mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$SUITECRM_DATABASE_NAME' AND table_name IN ('twilio_integration', 'twilio_audit_log', 'lead_journey', 'funnel_dashboard', 'sales_targets', 'packages', 'notification_queue', 'notification_api_keys', 'notification_rate_limit');" 2>/dev/null || echo "0")
 
-if [ "$TABLES_EXIST" = "6" ]; then
+if [ "$TABLES_EXIST" = "9" ]; then
     echo "All module tables already exist, skipping migration"
 else
-    echo "Creating database tables (found $TABLES_EXIST/6 tables)..."
+    echo "Creating database tables (found $TABLES_EXIST/9 tables)..."
     mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" <<'EOF'
 
 -- Twilio Integration table
@@ -522,6 +556,45 @@ CREATE TABLE IF NOT EXISTS packages (
     INDEX idx_package_code (package_code),
     INDEX idx_is_active (is_active, deleted),
     INDEX idx_deleted (deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Notification Queue table (for WebSocket real-time delivery)
+CREATE TABLE IF NOT EXISTS notification_queue (
+    id VARCHAR(36) NOT NULL PRIMARY KEY,
+    alert_id VARCHAR(36),
+    user_id VARCHAR(36) NOT NULL,
+    payload TEXT NOT NULL,
+    status ENUM('pending', 'sent', 'acknowledged', 'failed') DEFAULT 'pending',
+    created_at DATETIME NOT NULL,
+    sent_at DATETIME,
+    acknowledged_at DATETIME,
+    error_message VARCHAR(255),
+    INDEX idx_user_status (user_id, status),
+    INDEX idx_created (created_at),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Notification API Keys table (for webhook authentication)
+CREATE TABLE IF NOT EXISTS notification_api_keys (
+    id VARCHAR(36) NOT NULL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    api_key VARCHAR(64) NOT NULL UNIQUE,
+    description TEXT,
+    created_by VARCHAR(36),
+    created_at DATETIME NOT NULL,
+    last_used_at DATETIME,
+    is_active TINYINT(1) DEFAULT 1,
+    deleted TINYINT(1) DEFAULT 0,
+    INDEX idx_api_key (api_key),
+    INDEX idx_active (is_active, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Notification Rate Limiting table
+CREATE TABLE IF NOT EXISTS notification_rate_limit (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip_address VARCHAR(45) NOT NULL,
+    created_at DATETIME NOT NULL,
+    INDEX idx_ip_time (ip_address, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 EOF
