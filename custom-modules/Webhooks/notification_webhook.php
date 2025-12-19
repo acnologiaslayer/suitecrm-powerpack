@@ -6,9 +6,10 @@
  * External systems can push notifications to SuiteCRM users via this endpoint.
  *
  * Actions:
- *   - create: Create a new notification for specified users
- *   - batch:  Create multiple notifications
- *   - status: Check API status
+ *   - create:           Create a new notification for specified users
+ *   - batch:            Create multiple notifications
+ *   - verbacall_signup: Update lead when Verbacall confirms signup
+ *   - status:           Check API status
  *
  * Authentication Methods:
  *   - API Key: X-API-Key header
@@ -77,6 +78,7 @@ if ($action === 'status' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         'endpoints' => [
             'create' => 'POST /legacy/notification_webhook.php',
             'batch' => 'POST /legacy/notification_webhook.php?action=batch',
+            'verbacall_signup' => 'POST /legacy/notification_webhook.php?action=verbacall_signup',
             'status' => 'GET /legacy/notification_webhook.php?action=status'
         ]
     ]);
@@ -114,6 +116,9 @@ try {
             break;
         case 'batch':
             handleBatch($service);
+            break;
+        case 'verbacall_signup':
+            handleVerbacallSignup($service);
             break;
         default:
             http_response_code(400);
@@ -271,6 +276,127 @@ function handleBatch($service)
             'failed' => $errorCount
         ],
         'results' => $results
+    ]);
+}
+
+/**
+ * Handle Verbacall signup confirmation
+ * Updates lead's verbacall_signup_c field and notifies assigned BDM
+ *
+ * Expected payload:
+ * {
+ *   "leadId": "uuid",
+ *   "signedUpAt": "2025-01-01T12:00:00Z",
+ *   "userId": "verbacall-user-id",
+ *   "email": "lead@example.com",
+ *   "planName": "Business Plan" (optional)
+ * }
+ */
+function handleVerbacallSignup($service)
+{
+    $payload = getJsonPayload();
+
+    if (empty($payload)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Bad request', 'message' => 'Invalid JSON payload']);
+        return;
+    }
+
+    // Validate required field
+    if (empty($payload['leadId'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Validation error', 'message' => 'leadId is required']);
+        return;
+    }
+
+    $leadId = $payload['leadId'];
+    $signedUpAt = $payload['signedUpAt'] ?? date('c');
+    $verbacallUserId = $payload['userId'] ?? '';
+    $email = $payload['email'] ?? '';
+    $planName = $payload['planName'] ?? '';
+
+    $GLOBALS['log']->info("Verbacall Webhook: Signup received for lead $leadId");
+
+    // Load the lead
+    $lead = BeanFactory::getBean('Leads', $leadId);
+    if (!$lead || $lead->deleted) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Not found', 'message' => 'Lead not found: ' . $leadId]);
+        return;
+    }
+
+    // Update verbacall fields
+    $lead->verbacall_signup_c = 1;
+    $lead->save();
+
+    $GLOBALS['log']->info("Verbacall Webhook: Updated lead $leadId - verbacall_signup_c = 1");
+
+    // Log to LeadJourney if module exists
+    try {
+        $journey = BeanFactory::newBean('LeadJourney');
+        if ($journey) {
+            $journey->id = create_guid();
+            $journey->new_with_id = true;
+            $journey->name = 'Verbacall Signup Confirmed';
+            $journey->parent_type = 'Leads';
+            $journey->parent_id = $leadId;
+            $journey->touchpoint_type = 'verbacall_signup_confirmed';
+            $journey->touchpoint_date = gmdate('Y-m-d H:i:s', strtotime($signedUpAt));
+            $journey->touchpoint_data = json_encode([
+                'verbacall_user_id' => $verbacallUserId,
+                'email' => $email,
+                'plan_name' => $planName,
+                'signed_up_at' => $signedUpAt
+            ]);
+            $journey->save();
+            $GLOBALS['log']->info("Verbacall Webhook: LeadJourney touchpoint created for lead $leadId");
+        }
+    } catch (Exception $e) {
+        $GLOBALS['log']->warn("Verbacall Webhook: Could not log LeadJourney - " . $e->getMessage());
+    }
+
+    // Notify assigned user (BDM)
+    $notificationSent = false;
+    if (!empty($lead->assigned_user_id)) {
+        $leadName = trim($lead->first_name . ' ' . $lead->last_name);
+        if (empty($leadName)) {
+            $leadName = $lead->email1 ?: 'Unknown';
+        }
+
+        $result = $service->createNotification([
+            'title' => 'Verbacall Signup',
+            'message' => "$leadName has signed up for Verbacall" . ($planName ? " ($planName)" : ''),
+            'type' => 'success',
+            'priority' => 'high',
+            'target_users' => [$lead->assigned_user_id],
+            'target_module' => 'Leads',
+            'target_record' => $leadId,
+            'url_redirect' => "#/leads/detail/$leadId",
+            'metadata' => [
+                'event' => 'verbacall_signup',
+                'verbacall_user_id' => $verbacallUserId,
+                'plan_name' => $planName
+            ]
+        ]);
+
+        $notificationSent = $result['success'];
+        if ($result['success']) {
+            $GLOBALS['log']->info("Verbacall Webhook: BDM notification sent for lead $leadId");
+        } else {
+            $GLOBALS['log']->warn("Verbacall Webhook: Failed to send BDM notification - " . ($result['error'] ?? 'Unknown'));
+        }
+    }
+
+    // Success response
+    http_response_code(200);
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'lead_id' => $leadId,
+            'verbacall_signup_c' => true,
+            'notification_sent' => $notificationSent,
+            'journey_logged' => true
+        ]
     ]);
 }
 

@@ -13,7 +13,7 @@ if [ ! -f "/bitnami/suitecrm/public/legacy/config.php" ]; then
 fi
 
 # Verify modules exist
-for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub; do
+for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub VerbacallIntegration; do
     if [ ! -f "/bitnami/suitecrm/modules/$MODULE/$MODULE.php" ]; then
         echo "ERROR: Module $MODULE not found at /bitnami/suitecrm/modules/$MODULE/"
         exit 1
@@ -33,7 +33,7 @@ mkdir -p /bitnami/suitecrm/public/legacy/custom/modules
 
 # Copy module files to legacy directory
 echo "Copying module files to legacy directory..."
-for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub; do
+for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub VerbacallIntegration; do
     if [ -d "/bitnami/suitecrm/modules/$MODULE" ]; then
         echo "  Copying $MODULE..."
         cp -r "/bitnami/suitecrm/modules/$MODULE" "/bitnami/suitecrm/public/legacy/modules/"
@@ -51,6 +51,10 @@ fi
 
 if [ -d "/bitnami/suitecrm/modules/TwilioIntegration/Extensions" ]; then
     cp -r /bitnami/suitecrm/modules/TwilioIntegration/Extensions/* /bitnami/suitecrm/public/legacy/custom/Extension/ 2>/dev/null || true
+fi
+
+if [ -d "/bitnami/suitecrm/modules/VerbacallIntegration/Extensions" ]; then
+    cp -r /bitnami/suitecrm/modules/VerbacallIntegration/Extensions/* /bitnami/suitecrm/public/legacy/custom/Extension/ 2>/dev/null || true
 fi
 
 # Copy main custom Extensions (includes PowerPackModules.php for nav display)
@@ -187,6 +191,7 @@ $app_list_strings['moduleList']['TwilioIntegration'] = 'Twilio Integration';
 $app_list_strings['moduleList']['LeadJourney'] = 'Lead Journey';
 $app_list_strings['moduleList']['Webhooks'] = 'Webhooks';
 $app_list_strings['moduleList']['NotificationHub'] = 'Notification Hub';
+$app_list_strings['moduleList']['VerbacallIntegration'] = 'Verbacall Integration';
 
 // ACL Action Labels for Role Management UI
 $app_strings['LBL_ACTION_CRO_DASHBOARD'] = 'CRO Dashboard';
@@ -230,6 +235,10 @@ $moduleList[] = 'Webhooks';
 $beanList['NotificationHub'] = 'NotificationHub';
 $beanFiles['NotificationHub'] = 'modules/NotificationHub/NotificationHub.php';
 $moduleList[] = 'NotificationHub';
+
+$beanList['VerbacallIntegration'] = 'VerbacallIntegration';
+$beanFiles['VerbacallIntegration'] = 'modules/VerbacallIntegration/VerbacallIntegration.php';
+$moduleList[] = 'VerbacallIntegration';
 PHPEOF
 
 # Create the compiled extension file - SuiteCRM loads modules.ext.php (not Include.ext.php)
@@ -263,6 +272,10 @@ $moduleList[] = 'Webhooks';
 $beanList['NotificationHub'] = 'NotificationHub';
 $beanFiles['NotificationHub'] = 'modules/NotificationHub/NotificationHub.php';
 $moduleList[] = 'NotificationHub';
+
+$beanList['VerbacallIntegration'] = 'VerbacallIntegration';
+$beanFiles['VerbacallIntegration'] = 'modules/VerbacallIntegration/VerbacallIntegration.php';
+$moduleList[] = 'VerbacallIntegration';
 PHPEOF
 
 chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/
@@ -316,6 +329,10 @@ ${SPACES2}index: true
 ${SPACES2}list: true
 ${SPACES2}record: false
 ${SPACES}notification-hub:
+${SPACES2}index: true
+${SPACES2}list: true
+${SPACES2}record: false
+${SPACES}verbacall-integration:
 ${SPACES2}index: true
 ${SPACES2}list: true
 ${SPACES2}record: false
@@ -373,6 +390,10 @@ $module_name_map["Webhooks"] = [
 $module_name_map["NotificationHub"] = [
     "frontend" => "notification-hub",
     "core" => "NotificationHub"
+];
+$module_name_map["VerbacallIntegration"] = [
+    "frontend" => "verbacall-integration",
+    "core" => "VerbacallIntegration"
 ];
 MAPEOF
         echo "  ✓ Module name mappings added"
@@ -645,6 +666,20 @@ EOF
             ADD INDEX idx_opp_package_c (package_id_c);
     " 2>/dev/null && echo "  Opportunities custom fields added" || echo "  Opportunities custom fields already exist"
 
+    # Add Verbacall custom fields to leads table
+    echo "Adding Verbacall custom fields to leads table..."
+    mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "
+        SELECT COUNT(*) FROM information_schema.columns
+        WHERE table_schema='$SUITECRM_DATABASE_NAME' AND table_name='leads' AND column_name='verbacall_signup_c'
+    " | grep -q '^0$' && mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -e "
+        ALTER TABLE leads
+            ADD COLUMN verbacall_signup_c TINYINT(1) DEFAULT 0,
+            ADD COLUMN verbacall_last_login_c DATETIME DEFAULT NULL,
+            ADD COLUMN verbacall_minutes_used_c DECIMAL(10,2) DEFAULT 0,
+            ADD COLUMN verbacall_link_sent_c DATETIME DEFAULT NULL,
+            ADD INDEX idx_verbacall_signup_c (verbacall_signup_c);
+    " 2>/dev/null && echo "  Verbacall fields added to leads" || echo "  Verbacall fields already exist in leads"
+
     echo "Database tables and custom fields setup complete"
 fi
 
@@ -752,6 +787,19 @@ FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='LeadJourne
 INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
 SELECT UUID(), NOW(), NOW(), '1', '1', 'delete', 'LeadJourney', 'module', 90, 0
 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='LeadJourney' AND name='delete' AND deleted=0);
+
+-- VerbacallIntegration standard actions
+INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
+SELECT UUID(), NOW(), NOW(), '1', '1', 'access', 'VerbacallIntegration', 'module', 89, 0
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='VerbacallIntegration' AND name='access' AND deleted=0);
+
+INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
+SELECT UUID(), NOW(), NOW(), '1', '1', 'view', 'VerbacallIntegration', 'module', 90, 0
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='VerbacallIntegration' AND name='view' AND deleted=0);
+
+INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
+SELECT UUID(), NOW(), NOW(), '1', '1', 'list', 'VerbacallIntegration', 'module', 90, 0
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='VerbacallIntegration' AND name='list' AND deleted=0);
 
 EOF
     echo "  ✓ Standard ACL actions registered"
@@ -887,6 +935,27 @@ else
     echo "  ⚠ Click-to-call script source not found"
 fi
 
+# Install Verbacall integration script for SuiteCRM 8 Angular UI
+echo ""
+echo "Installing Verbacall integration for Angular UI..."
+if [ -f "/opt/bitnami/suitecrm/dist/verbacall-integration.js" ]; then
+    cp /opt/bitnami/suitecrm/dist/verbacall-integration.js /bitnami/suitecrm/public/dist/
+
+    # Inject script tag into index.html if not already present
+    if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
+        if ! grep -q "verbacall-integration.js" /bitnami/suitecrm/public/dist/index.html; then
+            sed -i 's|</body>|<script src="verbacall-integration.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            echo "  ✓ Verbacall integration script injected into Angular UI"
+        else
+            echo "  Verbacall integration script already present"
+        fi
+    else
+        echo "  ⚠ Angular index.html not found - Verbacall buttons may not work"
+    fi
+else
+    echo "  ⚠ Verbacall integration script source not found"
+fi
+
 # Clear all caches
 echo ""
 echo "Clearing caches..."
@@ -912,6 +981,7 @@ echo "  - LeadJourney - Customer journey tracking"
 echo "  - FunnelDashboard - Sales funnel visualization"
 echo "  - SalesTargets - BDM/Team target tracking with commissions"
 echo "  - Packages - Service packages with pricing"
+echo "  - VerbacallIntegration - Signup and payment link generation"
 echo ""
 echo "Role-based Dashboards:"
 echo "  - CRO Dashboard: index.php?module=FunnelDashboard&action=crodashboard"

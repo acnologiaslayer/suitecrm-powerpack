@@ -83,6 +83,21 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
         fi
     fi
 
+    # Copy Verbacall integration JS
+    if [ -f "/opt/bitnami/suitecrm/dist/verbacall-integration.js" ]; then
+        echo "Installing Verbacall integration script..."
+        cp /opt/bitnami/suitecrm/dist/verbacall-integration.js /bitnami/suitecrm/public/verbacall-integration.js
+        chown daemon:daemon /bitnami/suitecrm/public/verbacall-integration.js
+
+        # Inject script tag into index.html if not already present
+        if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
+            if ! grep -q "verbacall-integration.js" /bitnami/suitecrm/public/dist/index.html; then
+                echo "Injecting Verbacall integration script into Angular UI..."
+                sed -i 's|</body>|<script src="verbacall-integration.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            fi
+        fi
+    fi
+
     # Set ownership and permissions
     echo "Setting ownership and permissions..."
     chown -R daemon:daemon /bitnami/suitecrm
@@ -231,7 +246,7 @@ if [ -f "/bitnami/suitecrm/config.php" ]; then
     echo "Syncing PowerPack module files..."
 
     # Copy updated module files from image (clean copy - remove old first)
-    for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub; do
+    for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub VerbacallIntegration; do
         if [ -d "/opt/bitnami/suitecrm/modules/$MODULE" ]; then
             # Remove old module directory to ensure clean copy
             rm -rf "/bitnami/suitecrm/public/legacy/modules/$MODULE" 2>/dev/null || true
@@ -269,6 +284,12 @@ if [ -f "/bitnami/suitecrm/config.php" ]; then
     if [ -f "/opt/bitnami/suitecrm/dist/notification-ws.js" ]; then
         cp /opt/bitnami/suitecrm/dist/notification-ws.js /bitnami/suitecrm/public/notification-ws.js 2>/dev/null || true
         chown daemon:daemon /bitnami/suitecrm/public/notification-ws.js 2>/dev/null || true
+    fi
+
+    # Sync Verbacall integration JS to public root
+    if [ -f "/opt/bitnami/suitecrm/dist/verbacall-integration.js" ]; then
+        cp /opt/bitnami/suitecrm/dist/verbacall-integration.js /bitnami/suitecrm/public/verbacall-integration.js 2>/dev/null || true
+        chown daemon:daemon /bitnami/suitecrm/public/verbacall-integration.js 2>/dev/null || true
     fi
 
     # Re-run install script to update language files, module mappings, etc.

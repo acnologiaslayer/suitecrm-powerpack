@@ -25,6 +25,7 @@ COPY --chown=daemon:daemon custom-modules/SalesTargets /opt/bitnami/suitecrm/mod
 COPY --chown=daemon:daemon custom-modules/Packages /opt/bitnami/suitecrm/modules/Packages
 COPY --chown=daemon:daemon custom-modules/Webhooks /opt/bitnami/suitecrm/modules/Webhooks
 COPY --chown=daemon:daemon custom-modules/NotificationHub /opt/bitnami/suitecrm/modules/NotificationHub
+COPY --chown=daemon:daemon custom-modules/VerbacallIntegration /opt/bitnami/suitecrm/modules/VerbacallIntegration
 
 # Copy and setup WebSocket notification server
 COPY --chown=daemon:daemon config/notification-websocket /opt/bitnami/suitecrm/notification-websocket
@@ -33,9 +34,10 @@ RUN cd /opt/bitnami/suitecrm/notification-websocket && npm install --production
 # Copy custom field extensions
 COPY --chown=daemon:daemon custom-modules/Extensions /opt/bitnami/suitecrm/custom/Extension
 
-# Copy custom extensions (click-to-call and notification JS for Angular UI)
+# Copy custom extensions (click-to-call, notification and verbacall JS for Angular UI)
 COPY --chown=daemon:daemon config/custom-extensions/dist/twilio-click-to-call.js /opt/bitnami/suitecrm/dist/twilio-click-to-call.js
 COPY --chown=daemon:daemon config/custom-extensions/dist/notification-ws.js /opt/bitnami/suitecrm/dist/notification-ws.js
+COPY --chown=daemon:daemon config/custom-extensions/dist/verbacall-integration.js /opt/bitnami/suitecrm/dist/verbacall-integration.js
 
 # Copy installation scripts
 COPY install-scripts/install-modules.sh /opt/bitnami/scripts/suitecrm/install-modules.sh
@@ -63,6 +65,10 @@ RUN echo '<?php' > /opt/bitnami/suitecrm/config_override.php.template && \
     echo '// Notification WebSocket Configuration' >> /opt/bitnami/suitecrm/config_override.php.template && \
     echo '$sugar_config["notification_jwt_secret"] = getenv("NOTIFICATION_JWT_SECRET") ?: "default-secret-change-me";' >> /opt/bitnami/suitecrm/config_override.php.template && \
     echo '$sugar_config["notification_ws_url"] = getenv("NOTIFICATION_WS_URL") ?: "ws://localhost:3001";' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '// Verbacall Integration Configuration' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["verbacall_api_url"] = getenv("VERBACALL_API_URL") ?: "https://app.verbacall.com";' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["verbacall_default_discount"] = 10;' >> /opt/bitnami/suitecrm/config_override.php.template && \
+    echo '$sugar_config["verbacall_expiry_days"] = 7;' >> /opt/bitnami/suitecrm/config_override.php.template && \
     chown daemon:daemon /opt/bitnami/suitecrm/config_override.php.template
 
 # Expose ports: 8080 (HTTP), 8443 (HTTPS), 3001 (WebSocket)

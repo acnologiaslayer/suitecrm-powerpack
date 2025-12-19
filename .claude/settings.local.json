@@ -2,7 +2,19 @@
   "permissions": {
     "allow": [
       "Bash(git add:*)",
-      "Bash(powershell -File:*)"
+      "Bash(powershell -File:*)",
+      "Bash(docker build:*)",
+      "Bash(docker start:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker run:*)",
+      "Bash(mahir009/suitecrm-powerpack:v2.5.18)",
+      "WebSearch",
+      "WebFetch(domain:docs.suitecrm.com)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ]
   }
 }
