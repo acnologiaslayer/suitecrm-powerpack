@@ -1,7 +1,7 @@
 /**
  * Verbacall Integration for SuiteCRM 8 Angular UI
  * Adds Sign-up Link and Payment Link buttons to Lead detail pages
- * v1.0.1 - Fixed insertion point selectors for SuiteCRM 8 record view
+ * v1.0.2 - Added debug logging for troubleshooting
  */
 (function() {
     "use strict";
@@ -11,15 +11,15 @@
     window.VERBACALL_INIT = true;
 
     var CONFIG = {
-        signupUrl: "legacy/index.php?module=VerbacallIntegration&action=signuplink&lead_id=",
-        paymentUrl: "legacy/index.php?module=VerbacallIntegration&action=paymentlink&lead_id="
+        signupUrl: "/legacy/index.php?module=VerbacallIntegration&action=signuplink&lead_id=",
+        paymentUrl: "/legacy/index.php?module=VerbacallIntegration&action=paymentlink&lead_id="
     };
 
     var STYLES = {
-        panel: "background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);padding:16px 20px;border-radius:12px;margin:0 0 20px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap;box-shadow:0 4px 15px rgba(0,0,0,0.15);",
-        panelTitle: "color:#fff;font-weight:600;font-size:14px;margin-right:auto;display:flex;align-items:center;gap:8px;",
-        btnSignup: "cursor:pointer;padding:10px 18px;background:linear-gradient(135deg,#4ecca3,#38a3a5);color:#1a1a2e;border:none;border-radius:8px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:transform 0.2s,box-shadow 0.2s;",
-        btnPayment: "cursor:pointer;padding:10px 18px;background:linear-gradient(135deg,#f39c12,#e67e22);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:transform 0.2s,box-shadow 0.2s;",
+        panel: "background:#fff;padding:12px 16px;border-radius:8px;margin:0 20px 16px 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.1);border:1px solid #e0e0e0;",
+        panelTitle: "color:#333;font-weight:600;font-size:14px;margin-right:auto;display:flex;align-items:center;gap:8px;",
+        btnSignup: "cursor:pointer;padding:8px 16px;background:#28a745;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:background 0.2s;",
+        btnPayment: "cursor:pointer;padding:8px 16px;background:#fd7e14;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:background 0.2s;",
         dropdownItem: "display:flex;align-items:center;gap:8px;padding:8px 16px;cursor:pointer;color:#333;font-size:14px;transition:background 0.2s;",
         dropdownIcon: "width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;"
     };
@@ -28,8 +28,8 @@
 
     function getLeadIdFromUrl() {
         var hash = window.location.hash;
-        // Match: #/leads/detail/{uuid}
-        var match = hash.match(/^#\/leads\/detail\/([a-f0-9-]+)/i);
+        // Match: #/leads/record/{uuid} or #/leads/detail/{uuid}
+        var match = hash.match(/^#\/leads\/(?:record|detail)\/([a-f0-9-]+)/i);
         if (match) {
             return match[1];
         }
@@ -64,23 +64,17 @@
         // Title with icon
         var title = document.createElement("span");
         title.style.cssText = STYLES.panelTitle;
-        title.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> Verbacall';
+        title.innerHTML = '📞 Verbacall';
         panel.appendChild(title);
 
         // Sign-up Link Button
         var signupBtn = document.createElement("button");
         signupBtn.type = "button";
         signupBtn.style.cssText = STYLES.btnSignup;
-        signupBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg> Send Sign-up Link';
+        signupBtn.innerHTML = '✉️ Send Sign-up Link';
         signupBtn.title = "Generate and email Verbacall signup link to this lead";
-        signupBtn.onmouseover = function() {
-            this.style.transform = "translateY(-2px)";
-            this.style.boxShadow = "0 4px 12px rgba(78,204,163,0.4)";
-        };
-        signupBtn.onmouseout = function() {
-            this.style.transform = "none";
-            this.style.boxShadow = "none";
-        };
+        signupBtn.onmouseover = function() { this.style.background = "#218838"; };
+        signupBtn.onmouseout = function() { this.style.background = "#28a745"; };
         signupBtn.onclick = function(e) {
             e.preventDefault();
             openSignupPopup(leadId);
@@ -91,16 +85,10 @@
         var paymentBtn = document.createElement("button");
         paymentBtn.type = "button";
         paymentBtn.style.cssText = STYLES.btnPayment;
-        paymentBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg> Generate Payment Link';
+        paymentBtn.innerHTML = '💳 Generate Payment Link';
         paymentBtn.title = "Generate Verbacall payment/discount link for this lead";
-        paymentBtn.onmouseover = function() {
-            this.style.transform = "translateY(-2px)";
-            this.style.boxShadow = "0 4px 12px rgba(243,156,18,0.4)";
-        };
-        paymentBtn.onmouseout = function() {
-            this.style.transform = "none";
-            this.style.boxShadow = "none";
-        };
+        paymentBtn.onmouseover = function() { this.style.background = "#e96b00"; };
+        paymentBtn.onmouseout = function() { this.style.background = "#fd7e14"; };
         paymentBtn.onclick = function(e) {
             e.preventDefault();
             openPaymentPopup(leadId);
@@ -116,23 +104,11 @@
 
         console.log("[Verbacall] Looking for insertion point...");
 
-        // Strategy 1: Insert after the record-view-hr-container (best position)
-        var hrContainer = document.querySelector(".record-view-hr-container");
-        if (hrContainer) {
-            console.log("[Verbacall] Found .record-view-hr-container");
-            var panel = createVerbacallPanel(leadId);
-            panel.style.cssText = STYLES.panel + "margin:16px 24px 0 24px;";
-            hrContainer.parentNode.insertBefore(panel, hrContainer.nextSibling);
-            console.log("[Verbacall] Panel added after hr-container");
-            return;
-        }
-
-        // Strategy 2: Insert at start of .record-view-container
+        // Strategy 1: Insert at start of .record-view-container (inside the content area)
         var recordViewContainer = document.querySelector(".record-view-container");
         if (recordViewContainer) {
             console.log("[Verbacall] Found .record-view-container");
             var panel = createVerbacallPanel(leadId);
-            panel.style.cssText = STYLES.panel + "margin:0 0 16px 0;";
             if (recordViewContainer.firstChild) {
                 recordViewContainer.insertBefore(panel, recordViewContainer.firstChild);
             } else {
@@ -142,13 +118,21 @@
             return;
         }
 
+        // Strategy 2: Insert after the record-view-hr-container
+        var hrContainer = document.querySelector(".record-view-hr-container");
+        if (hrContainer) {
+            console.log("[Verbacall] Found .record-view-hr-container");
+            var panel = createVerbacallPanel(leadId);
+            hrContainer.parentNode.insertBefore(panel, hrContainer.nextSibling);
+            console.log("[Verbacall] Panel added after hr-container");
+            return;
+        }
+
         // Strategy 3: Insert inside .record-view
         var recordView = document.querySelector(".record-view");
         if (recordView) {
             console.log("[Verbacall] Found .record-view");
             var panel = createVerbacallPanel(leadId);
-            panel.style.cssText = STYLES.panel + "margin:16px 24px;";
-            // Insert after the sticky header
             var stickyHeader = recordView.querySelector(".record-view-position-sticky");
             if (stickyHeader && stickyHeader.nextSibling) {
                 recordView.insertBefore(panel, stickyHeader.nextSibling.nextSibling);
@@ -208,17 +192,26 @@
     }
 
     function scanAndInject() {
+        var hash = window.location.hash;
+        console.log("[Verbacall] Current hash:", hash);
+
         if (!isLeadDetailPage()) {
             // Remove panel if navigated away from lead detail
             var existingPanel = document.getElementById("verbacall-panel");
             if (existingPanel) {
                 existingPanel.remove();
             }
+            console.log("[Verbacall] Not on lead detail page");
             return;
         }
 
         var leadId = getLeadIdFromUrl();
         console.log("[Verbacall] On lead detail page, lead ID:", leadId);
+
+        // Debug: Log available containers
+        console.log("[Verbacall] .record-view exists:", !!document.querySelector(".record-view"));
+        console.log("[Verbacall] .record-view-container exists:", !!document.querySelector(".record-view-container"));
+        console.log("[Verbacall] .record-view-hr-container exists:", !!document.querySelector(".record-view-hr-container"));
 
         // Add visible panel
         addPanelToPage(leadId);
