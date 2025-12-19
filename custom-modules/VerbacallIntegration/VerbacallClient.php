@@ -12,15 +12,19 @@ class VerbacallClient
     private $apiUrl;
     private $timeout = 30;
 
-    public function __construct()
+    public function __construct($apiUrl = null)
     {
         global $sugar_config;
 
-        $this->apiUrl = rtrim(
-            getenv('VERBACALL_API_URL') ?:
-            ($sugar_config['verbacall_api_url'] ?? 'https://app.verbacall.com'),
-            '/'
-        );
+        if ($apiUrl) {
+            $this->apiUrl = rtrim($apiUrl, '/');
+        } else {
+            $this->apiUrl = rtrim(
+                getenv('VERBACALL_API_URL') ?:
+                ($sugar_config['verbacall_api_url'] ?? 'https://app.verbacall.com'),
+                '/'
+            );
+        }
     }
 
     /**
@@ -180,11 +184,15 @@ class VerbacallClient
         $errno = curl_errno($ch);
         curl_close($ch);
 
-        // Log the request
-        $GLOBALS['log']->debug("VerbacallClient: $method $url - HTTP $httpCode");
+        // Log the request (if logger available)
+        if (!empty($GLOBALS['log'])) {
+            $GLOBALS['log']->debug("VerbacallClient: $method $url - HTTP $httpCode");
+        }
 
         if ($errno) {
-            $GLOBALS['log']->error("VerbacallClient: cURL error ($errno): $error");
+            if (!empty($GLOBALS['log'])) {
+                $GLOBALS['log']->error("VerbacallClient: cURL error ($errno): $error");
+            }
             throw new Exception("Connection error: $error");
         }
 
@@ -193,7 +201,9 @@ class VerbacallClient
         if ($httpCode >= 400) {
             $errorMsg = isset($decoded['message']) ? $decoded['message'] :
                        (isset($decoded['error']) ? $decoded['error'] : "HTTP $httpCode");
-            $GLOBALS['log']->error("VerbacallClient: API error - $errorMsg");
+            if (!empty($GLOBALS['log'])) {
+                $GLOBALS['log']->error("VerbacallClient: API error - $errorMsg");
+            }
             throw new Exception("Verbacall API error: $errorMsg");
         }
 
