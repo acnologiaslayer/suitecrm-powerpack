@@ -191,7 +191,7 @@ $app_list_strings['moduleList']['TwilioIntegration'] = 'Twilio Integration';
 $app_list_strings['moduleList']['LeadJourney'] = 'Lead Journey';
 $app_list_strings['moduleList']['Webhooks'] = 'Webhooks';
 $app_list_strings['moduleList']['NotificationHub'] = 'Notification Hub';
-$app_list_strings['moduleList']['VerbacallIntegration'] = 'Verbacall Integration';
+// VerbacallIntegration is intentionally hidden from nav - it's Lead-specific only
 
 // ACL Action Labels for Role Management UI
 $app_strings['LBL_ACTION_CRO_DASHBOARD'] = 'CRO Dashboard';
@@ -238,7 +238,7 @@ $moduleList[] = 'NotificationHub';
 
 $beanList['VerbacallIntegration'] = 'VerbacallIntegration';
 $beanFiles['VerbacallIntegration'] = 'modules/VerbacallIntegration/VerbacallIntegration.php';
-$moduleList[] = 'VerbacallIntegration';
+// VerbacallIntegration not added to moduleList - it's Lead-specific only
 PHPEOF
 
 # Create the compiled extension file - SuiteCRM loads modules.ext.php (not Include.ext.php)
@@ -275,7 +275,7 @@ $moduleList[] = 'NotificationHub';
 
 $beanList['VerbacallIntegration'] = 'VerbacallIntegration';
 $beanFiles['VerbacallIntegration'] = 'modules/VerbacallIntegration/VerbacallIntegration.php';
-$moduleList[] = 'VerbacallIntegration';
+// VerbacallIntegration not added to moduleList - it's Lead-specific only
 PHPEOF
 
 chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/
@@ -391,10 +391,7 @@ $module_name_map["NotificationHub"] = [
     "frontend" => "notification-hub",
     "core" => "NotificationHub"
 ];
-$module_name_map["VerbacallIntegration"] = [
-    "frontend" => "verbacall-integration",
-    "core" => "VerbacallIntegration"
-];
+// VerbacallIntegration not added to module_name_map - it's Lead-specific only
 MAPEOF
         echo "  ✓ Module name mappings added"
     else

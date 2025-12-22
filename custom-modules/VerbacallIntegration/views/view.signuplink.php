@@ -51,7 +51,14 @@ class VerbacallIntegrationViewSignuplink extends SugarView
 
     private function sendSignupEmail($lead)
     {
-        header('Content-Type: application/json');
+        // Clear ALL output buffers to prevent contamination from other modules
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-cache, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
 
         if (empty($lead->email1)) {
             echo json_encode(['success' => false, 'message' => 'Lead has no email address']);
@@ -73,16 +80,25 @@ class VerbacallIntegrationViewSignuplink extends SugarView
             $leadName = 'there';
         }
 
-        $subject = "Get Started with Verbacall - Your AI Phone Solution";
+        // Use custom subject/body if provided, otherwise use defaults
+        if (!empty($_POST['subject'])) {
+            $subject = $_POST['subject'];
+        } else {
+            $subject = "Get Started with Verbacall - Your AI Phone Solution";
+        }
 
-        $body = "Hello {$leadName},\n\n";
-        $body .= "You've been invited to try Verbacall, our AI-powered phone solution that helps you manage calls more efficiently.\n\n";
-        $body .= "Click the link below to create your account:\n";
-        $body .= "$signupUrl\n\n";
-        $body .= "This personalized link is created just for you.\n\n";
-        $body .= "If you have any questions, please don't hesitate to reach out.\n\n";
-        $body .= "Best regards,\n";
-        $body .= $fromName;
+        if (!empty($_POST['body'])) {
+            $body = $_POST['body'];
+        } else {
+            $body = "Hello {$leadName},\n\n";
+            $body .= "You've been invited to try Verbacall, our AI-powered phone solution that helps you manage calls more efficiently.\n\n";
+            $body .= "Click the link below to create your account:\n";
+            $body .= "$signupUrl\n\n";
+            $body .= "This personalized link is created just for you.\n\n";
+            $body .= "If you have any questions, please don't hesitate to reach out.\n\n";
+            $body .= "Best regards,\n";
+            $body .= $fromName;
+        }
 
         try {
             $mail = new SugarPHPMailer();
@@ -161,122 +177,179 @@ class VerbacallIntegrationViewSignuplink extends SugarView
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            background: #f5f7fa;
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
         }
         .container {
-            max-width: 500px;
-            width: 100%;
-            background: rgba(255,255,255,0.05);
-            backdrop-filter: blur(10px);
-            padding: 30px;
-            border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.1);
+            max-width: 480px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
         }
         h1 {
-            color: #fff;
-            font-size: 20px;
+            color: #333;
+            font-size: 18px;
             margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #28a745;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
-        h1::before { content: ""; font-size: 24px; }
         .lead-info {
-            background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 12px;
+            background: #f8f9fa;
+            padding: 14px;
+            border-radius: 8px;
             margin-bottom: 20px;
+            border: 1px solid #e9ecef;
         }
         .lead-info p {
-            color: rgba(255,255,255,0.7);
-            margin-bottom: 8px;
+            color: #666;
+            margin-bottom: 6px;
             font-size: 14px;
         }
-        .lead-info strong { color: #fff; }
+        .lead-info p:last-child { margin-bottom: 0; }
+        .lead-info strong { color: #333; }
         .link-sent-badge {
-            background: rgba(78,204,163,0.2);
-            color: #4ecca3;
-            padding: 8px 12px;
-            border-radius: 8px;
+            background: #d4edda;
+            color: #155724;
+            padding: 6px 10px;
+            border-radius: 4px;
             font-size: 12px;
             margin-top: 10px;
             display: inline-block;
+            border: 1px solid #c3e6cb;
         }
         .url-box {
-            background: rgba(0,0,0,0.5);
-            padding: 15px;
-            border-radius: 8px;
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
             word-break: break-all;
-            color: #4ecca3;
-            font-family: monospace;
+            color: #0056b3;
+            font-family: "SF Mono", Monaco, monospace;
             font-size: 12px;
             margin-bottom: 20px;
-            border: 1px solid rgba(78,204,163,0.3);
+            border: 1px solid #dee2e6;
         }
         .btn {
             width: 100%;
-            padding: 14px;
-            font-size: 16px;
+            padding: 12px;
+            font-size: 14px;
             border: none;
-            border-radius: 10px;
+            border-radius: 6px;
             cursor: pointer;
             margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            font-weight: 500;
-            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+            transition: background 0.2s, transform 0.1s;
         }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
         .btn-primary {
-            background: linear-gradient(135deg, #4ecca3, #38a3a5);
-            color: #1a1a2e;
-        }
-        .btn-secondary {
-            background: rgba(255,255,255,0.1);
+            background: #28a745;
             color: #fff;
         }
-        .btn-secondary:hover {
-            background: rgba(255,255,255,0.15);
+        .btn-primary:hover { background: #218838; }
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
         }
+        .btn-secondary {
+            background: #6c757d;
+            color: #fff;
+        }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-copy {
+            background: #17a2b8;
+            color: #fff;
+        }
+        .btn-copy:hover { background: #138496; }
         .status {
             padding: 12px;
-            border-radius: 8px;
-            margin-top: 15px;
+            border-radius: 6px;
+            margin-top: 16px;
             text-align: center;
             display: none;
             font-size: 14px;
         }
         .status.success {
-            background: rgba(78,204,163,0.2);
-            color: #4ecca3;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
             display: block;
         }
         .status.error {
-            background: rgba(220,53,69,0.2);
-            color: #ff6b6b;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
             display: block;
         }
         .status.loading {
-            background: rgba(255,193,7,0.2);
-            color: #ffc107;
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
             display: block;
+        }
+        .email-composer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e9ecef;
+        }
+        .email-composer h3 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 16px;
+        }
+        .form-group {
+            margin-bottom: 14px;
+        }
+        .form-group label {
+            display: block;
+            color: #555;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .form-group input[type="text"],
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            color: #333;
+            background: #fff;
+        }
+        .form-group input[type="text"]:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #28a745;
+            box-shadow: 0 0 0 3px rgba(40,167,69,0.15);
+        }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 150px;
+            line-height: 1.5;
+        }
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .button-row .btn {
+            flex: 1;
+            margin-bottom: 0;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Verbacall Sign-up Link</h1>
+        <h1>✉️ Verbacall Sign-up Link</h1>
 
         <div class="lead-info">
             <p><strong>Lead:</strong> {$leadName}</p>
@@ -290,53 +363,106 @@ HTML;
         echo <<<HTML
         </div>
 
+        <p style="color:#555;font-size:13px;margin-bottom:8px;font-weight:600;">Sign-up URL:</p>
         <div class="url-box" id="signupUrl">{$escapedUrl}</div>
 
-        <button class="btn btn-secondary" onclick="copyUrl()">Copy URL</button>
-        <button class="btn btn-primary" onclick="sendEmail()" id="sendBtn">Send Email to Lead</button>
+        <button class="btn btn-copy" onclick="copyUrl()">📋 Copy URL</button>
+        <button class="btn btn-primary" onclick="showEmailComposer()" id="composeBtn">📧 Compose Email</button>
         <button class="btn btn-secondary" onclick="window.close()">Close</button>
+
+        <div class="email-composer" id="emailComposer" style="display:none;">
+            <h3>Email Preview</h3>
+            <div class="form-group">
+                <label for="emailSubject">Subject:</label>
+                <input type="text" id="emailSubject" value="Get Started with Verbacall - Your AI Phone Solution">
+            </div>
+            <div class="form-group">
+                <label for="emailBody">Message:</label>
+                <textarea id="emailBody" rows="12"></textarea>
+            </div>
+            <div class="button-row">
+                <button class="btn btn-primary" onclick="sendEmail()" id="sendBtn">📤 Send Email</button>
+                <button class="btn btn-secondary" onclick="hideEmailComposer()">Cancel</button>
+            </div>
+        </div>
 
         <div class="status" id="status"></div>
     </div>
 
     <script>
+    var defaultBody = "Hello {$leadName},\\n\\nYou've been invited to try Verbacall, our AI-powered phone solution that helps you manage calls more efficiently.\\n\\nClick the link below to create your account:\\n{$escapedUrl}\\n\\nThis personalized link is created just for you.\\n\\nIf you have any questions, please don't hesitate to reach out.\\n\\nBest regards";
+
     function copyUrl() {
         var url = document.getElementById("signupUrl").textContent;
         navigator.clipboard.writeText(url).then(function() {
-            showStatus("success", "URL copied to clipboard!");
+            showStatus("success", "✓ URL copied to clipboard!");
         }).catch(function() {
-            // Fallback for older browsers
             var textArea = document.createElement("textarea");
             textArea.value = url;
             document.body.appendChild(textArea);
             textArea.select();
             document.execCommand("copy");
             document.body.removeChild(textArea);
-            showStatus("success", "URL copied to clipboard!");
+            showStatus("success", "✓ URL copied to clipboard!");
         });
+    }
+
+    function showEmailComposer() {
+        document.getElementById("emailBody").value = defaultBody;
+        document.getElementById("emailComposer").style.display = "block";
+        document.getElementById("composeBtn").style.display = "none";
+    }
+
+    function hideEmailComposer() {
+        document.getElementById("emailComposer").style.display = "none";
+        document.getElementById("composeBtn").style.display = "block";
     }
 
     function sendEmail() {
         var btn = document.getElementById("sendBtn");
+        var subject = document.getElementById("emailSubject").value;
+        var body = document.getElementById("emailBody").value;
+
         btn.disabled = true;
         btn.textContent = "Sending...";
         showStatus("loading", "Sending email...");
 
+        var data = new URLSearchParams();
+        data.append("send_email", "1");
+        data.append("subject", subject);
+        data.append("body", body);
+
         fetch(window.location.href, {
             method: "POST",
-            headers: {"Content-Type": "application/x-www-form-urlencoded"},
-            body: "send_email=1"
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json"
+            },
+            body: data.toString(),
+            credentials: "same-origin"
         })
-        .then(function(r) { return r.json(); })
+        .then(function(response) {
+            return response.text().then(function(text) {
+                var jsonMatch = text.match(/^\s*(\{[\s\S]*?\})\s*/);
+                if (jsonMatch) {
+                    try { return JSON.parse(jsonMatch[1]); } catch (e) {}
+                }
+                try { return JSON.parse(text); } catch (e) {
+                    console.error("Raw response:", text.substring(0, 500));
+                    throw new Error("Invalid JSON response from server");
+                }
+            });
+        })
         .then(function(data) {
-            showStatus(data.success ? "success" : "error", data.message);
+            showStatus(data.success ? "success" : "error", data.success ? "✓ " + data.message : data.message);
             btn.disabled = false;
-            btn.textContent = "Send Email to Lead";
+            btn.textContent = "📤 Send Email";
+            if (data.success) hideEmailComposer();
         })
         .catch(function(err) {
             showStatus("error", "Error: " + err.message);
             btn.disabled = false;
-            btn.textContent = "Send Email to Lead";
+            btn.textContent = "📤 Send Email";
         });
     }
 
@@ -354,35 +480,70 @@ HTML;
 
     private function displayError($message)
     {
+        $escapedMessage = htmlspecialchars($message);
         echo <<<HTML
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Error</title>
+    <title>Error - Verbacall</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background: #1a1a2e;
-            color: #ff6b6b;
-            padding: 50px;
-            text-align: center;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
-        h2 { margin-bottom: 20px; }
+        .error-container {
+            max-width: 400px;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        h2 {
+            color: #dc3545;
+            font-size: 20px;
+            margin-bottom: 12px;
+        }
+        p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
         button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            background: rgba(255,255,255,0.1);
+            padding: 10px 24px;
+            background: #6c757d;
             color: #fff;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
         }
+        button:hover { background: #5a6268; }
     </style>
 </head>
 <body>
-    <h2>Error</h2>
-    <p>{$message}</p>
-    <button onclick="window.close()">Close</button>
+    <div class="error-container">
+        <div class="error-icon">⚠️</div>
+        <h2>Error</h2>
+        <p>{$escapedMessage}</p>
+        <button onclick="window.close()">Close</button>
+    </div>
 </body>
 </html>
 HTML;

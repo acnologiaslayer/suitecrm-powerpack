@@ -1,7 +1,7 @@
 /**
  * Verbacall Integration for SuiteCRM 8 Angular UI
  * Adds Sign-up Link and Payment Link buttons to Lead detail pages
- * v1.0.2 - Added debug logging for troubleshooting
+ * v1.0.5 - Fixed to only show in Lead record actions (with Delete), not global user menu
  */
 (function() {
     "use strict";
@@ -24,7 +24,7 @@
         dropdownIcon: "width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;"
     };
 
-    console.log("[Verbacall] Script loaded v1.0.1");
+    console.log("[Verbacall] Script loaded v1.0.3");
 
     function getLeadIdFromUrl() {
         var hash = window.location.hash;
@@ -147,18 +147,24 @@
     }
 
     function addActionsDropdownItems(leadId) {
-        // Find the actions dropdown menu
-        var dropdownMenus = document.querySelectorAll(".dropdown-menu, [class*='action'] .dropdown-menu, scrm-action-menu .dropdown-menu");
+        // Find all dropdown menus
+        var dropdownMenus = document.querySelectorAll(".dropdown-menu");
 
         dropdownMenus.forEach(function(menu) {
             // Skip if already processed
             if (menu.querySelector(".verbacall-action-item")) return;
 
-            // Check if this looks like an actions menu (has edit, delete, etc.)
+            // Skip global user menu (check for specific user menu indicators)
+            if (menu.classList.contains("global-links-dropdown")) return;
+            if (menu.querySelector(".global-user-name")) return;
+            if (menu.querySelector("scrm-logout-ui")) return;
+            if (menu.querySelector('a[href*="users/edit"]')) return;
+
+            // Check if this looks like an actions menu (has edit or delete)
             var menuText = menu.textContent.toLowerCase();
             if (menuText.indexOf("edit") === -1 && menuText.indexOf("delete") === -1) return;
 
-            console.log("[Verbacall] Found actions dropdown, adding items...");
+            console.log("[Verbacall] Found record actions dropdown, adding items...");
 
             // Add divider
             var divider = document.createElement("div");

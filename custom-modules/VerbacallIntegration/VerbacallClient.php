@@ -10,9 +10,10 @@ if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
 class VerbacallClient
 {
     private $apiUrl;
+    private $appUrl;
     private $timeout = 30;
 
-    public function __construct($apiUrl = null)
+    public function __construct($apiUrl = null, $appUrl = null)
     {
         global $sugar_config;
 
@@ -21,7 +22,17 @@ class VerbacallClient
         } else {
             $this->apiUrl = rtrim(
                 getenv('VERBACALL_API_URL') ?:
-                ($sugar_config['verbacall_api_url'] ?? 'https://app.verbacall.com'),
+                ($sugar_config['verbacall_api_url'] ?? 'https://demo-ai.verbacall.com'),
+                '/'
+            );
+        }
+
+        if ($appUrl) {
+            $this->appUrl = rtrim($appUrl, '/');
+        } else {
+            $this->appUrl = rtrim(
+                getenv('VERBACALL_APP_URL') ?:
+                ($sugar_config['verbacall_app_url'] ?? 'https://app.verbacall.com'),
                 '/'
             );
         }
@@ -29,6 +40,7 @@ class VerbacallClient
 
     /**
      * Generate signup URL for a lead
+     * Uses the frontend app URL (app.verbacall.com)
      *
      * @param string $leadId SuiteCRM Lead ID
      * @param string $email Lead's email address
@@ -41,7 +53,7 @@ class VerbacallClient
             'email' => $email
         ]);
 
-        return $this->apiUrl . '/auth/register?' . $params;
+        return $this->appUrl . '/auth/register?' . $params;
     }
 
     /**
@@ -218,5 +230,15 @@ class VerbacallClient
     public function getApiUrl()
     {
         return $this->apiUrl;
+    }
+
+    /**
+     * Get App (frontend) base URL
+     *
+     * @return string
+     */
+    public function getAppUrl()
+    {
+        return $this->appUrl;
     }
 }

@@ -41,6 +41,12 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
             return;
         }
 
+        // Handle email sending
+        if (!empty($_POST['send_email'])) {
+            $this->sendPaymentEmail($lead);
+            return;
+        }
+
         // Fetch plans
         try {
             $client = new VerbacallClient();
@@ -59,7 +65,15 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
 
     private function createDiscountOffer($lead)
     {
-        header('Content-Type: application/json');
+        // Clear ALL output buffers to prevent contamination from other modules
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Prevent any further output from other modules
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-cache, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
 
         global $current_user;
 
@@ -143,18 +157,94 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
         }
     }
 
+    private function sendPaymentEmail($lead)
+    {
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-cache, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
+
+        if (empty($lead->email1)) {
+            echo json_encode(['success' => false, 'message' => 'Lead has no email address']);
+            exit;
+        }
+
+        require_once('include/SugarPHPMailer.php');
+
+        global $sugar_config, $current_user;
+
+        $fromEmail = $sugar_config['notify_fromaddress'] ?? 'noreply@boomershub.com';
+        $fromName = $sugar_config['notify_fromname'] ?? 'Boomers Hub';
+
+        $leadName = trim($lead->first_name . ' ' . $lead->last_name);
+        if (empty($leadName)) {
+            $leadName = 'there';
+        }
+
+        $subject = $_POST['subject'] ?? 'Special Offer: Exclusive Discount on Verbacall';
+        $body = $_POST['body'] ?? '';
+        $discountUrl = $_POST['discount_url'] ?? '';
+
+        if (empty($body)) {
+            echo json_encode(['success' => false, 'message' => 'Email body is required']);
+            exit;
+        }
+
+        try {
+            $mail = new SugarPHPMailer();
+            $mail->setMailerForSystem();
+            $mail->From = $fromEmail;
+            $mail->FromName = $fromName;
+            $mail->addAddress($lead->email1, $leadName);
+            $mail->Subject = $subject;
+            $mail->Body = $body;
+            $mail->isHTML(false);
+
+            $sent = $mail->send();
+
+            if ($sent) {
+                // Log to Lead Journey
+                $this->logTouchpoint($lead->id, 'verbacall_payment_email_sent', [
+                    'discount_url' => $discountUrl,
+                    'sent_by' => $current_user->id,
+                    'sent_to' => $lead->email1,
+                    'subject' => $subject
+                ]);
+
+                $GLOBALS['log']->info("VerbacallIntegration: Payment link email sent to {$lead->email1} for lead {$lead->id}");
+
+                echo json_encode(['success' => true, 'message' => 'Email sent successfully!']);
+            } else {
+                $GLOBALS['log']->error("VerbacallIntegration: Failed to send payment email to {$lead->email1}");
+                echo json_encode(['success' => false, 'message' => 'Failed to send email. Please check mail configuration.']);
+            }
+        } catch (Exception $e) {
+            $GLOBALS['log']->error("VerbacallIntegration: Email exception - " . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+
+        exit;
+    }
+
     private function displayPaymentUI($lead, $plans, $defaultDiscount, $expiryDays)
     {
         $leadName = htmlspecialchars(trim($lead->first_name . ' ' . $lead->last_name));
         $leadEmail = htmlspecialchars($lead->email1);
 
-        // Build plans dropdown options
-        $planOptions = '';
+        // Build plans data as JSON for JavaScript
+        $plansJson = json_encode($plans);
+
+        // Build plans dropdown options with data attributes
+        $planOptions = '<option value="">-- Select a Plan --</option>';
         foreach ($plans as $plan) {
-            $price = number_format($plan['monthlyPrice'] ?? 0, 2);
+            $monthlyPrice = floatval($plan['monthlyPrice'] ?? 0);
+            $yearlyPrice = floatval($plan['yearlyPrice'] ?? 0);
             $planName = htmlspecialchars($plan['name'] ?? 'Unknown Plan');
             $planId = htmlspecialchars($plan['id'] ?? '');
-            $planOptions .= "<option value=\"{$planId}\">{$planName} - \${$price}/mo</option>";
+            $planOptions .= "<option value=\"{$planId}\" data-monthly=\"{$monthlyPrice}\" data-yearly=\"{$yearlyPrice}\">{$planName}</option>";
         }
 
         echo <<<HTML
@@ -168,132 +258,291 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            background: #f5f7fa;
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
         }
         .container {
-            max-width: 500px;
-            width: 100%;
-            background: rgba(255,255,255,0.05);
-            backdrop-filter: blur(10px);
-            padding: 30px;
-            border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.1);
+            max-width: 520px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
         }
         h1 {
-            color: #fff;
-            font-size: 20px;
+            color: #333;
+            font-size: 18px;
             margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #fd7e14;
         }
-        h1::before { content: ""; font-size: 24px; }
         .lead-info {
-            background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 12px;
+            background: #f8f9fa;
+            padding: 14px;
+            border-radius: 8px;
             margin-bottom: 20px;
+            border: 1px solid #e9ecef;
         }
         .lead-info p {
-            color: rgba(255,255,255,0.7);
-            margin-bottom: 8px;
+            color: #666;
+            margin-bottom: 6px;
             font-size: 14px;
         }
-        .lead-info strong { color: #fff; }
+        .lead-info p:last-child { margin-bottom: 0; }
+        .lead-info strong { color: #333; }
         .form-group { margin-bottom: 18px; }
         label {
             display: block;
-            color: rgba(255,255,255,0.7);
-            margin-bottom: 6px;
-            font-size: 13px;
-            font-weight: 500;
-        }
-        select, input {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 8px;
-            background: rgba(0,0,0,0.3);
-            color: #fff;
+            color: #333;
+            margin-bottom: 8px;
             font-size: 14px;
-            transition: border-color 0.2s;
+            font-weight: 600;
         }
-        select:focus, input:focus {
+        input[type="number"] {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            background-color: #fff;
+            color: #333;
+            font-size: 15px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        select#planId {
+            width: 100%;
+            height: 48px;
+            padding: 12px 14px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            background: #ffffff !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            -webkit-text-fill-color: #000000 !important;
+            font-size: 15px !important;
+            font-weight: 500 !important;
+            cursor: pointer;
+            opacity: 1 !important;
+            text-indent: 0 !important;
+            text-shadow: none !important;
+            -webkit-appearance: menulist !important;
+            -moz-appearance: menulist !important;
+            appearance: menulist !important;
+            line-height: 1.5 !important;
+        }
+        select#planId option {
+            color: #000000 !important;
+            background: #ffffff !important;
+            background-color: #ffffff !important;
+            -webkit-text-fill-color: #000000 !important;
+            font-size: 15px !important;
+            padding: 10px;
+        }
+        input[type="number"]:focus, select:focus {
             outline: none;
-            border-color: #f39c12;
+            border-color: #fd7e14;
+            box-shadow: 0 0 0 4px rgba(253,126,20,0.15);
         }
-        select option {
-            background: #1a1a2e;
+        .billing-toggle {
+            display: flex;
+            gap: 0;
+            margin-bottom: 18px;
+        }
+        .billing-toggle label {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            border: 2px solid #dee2e6;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            color: #666;
+            background: #f8f9fa;
+            transition: all 0.2s;
+            margin-bottom: 0;
+        }
+        .billing-toggle label:first-child {
+            border-radius: 8px 0 0 8px;
+            border-right: 1px solid #dee2e6;
+        }
+        .billing-toggle label:last-child {
+            border-radius: 0 8px 8px 0;
+            border-left: 1px solid #dee2e6;
+        }
+        .billing-toggle input { display: none; }
+        .billing-toggle input:checked + label {
+            background: #fd7e14;
             color: #fff;
+            border-color: #fd7e14;
         }
+        .price-summary {
+            background: #fff8f0;
+            border: 2px solid #fd7e14;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 18px;
+        }
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .price-row:last-child { margin-bottom: 0; }
+        .price-row.original { color: #666; }
+        .price-row.original .amount { text-decoration: line-through; }
+        .price-row.discount { color: #28a745; }
+        .price-row.final {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+            padding-top: 8px;
+            border-top: 1px solid #ffd9b3;
+        }
+        .price-row .amount { font-weight: 600; }
         .btn {
             width: 100%;
-            padding: 14px;
-            font-size: 16px;
+            padding: 12px;
+            font-size: 14px;
             border: none;
-            border-radius: 10px;
+            border-radius: 6px;
             cursor: pointer;
             margin-bottom: 10px;
-            font-weight: 500;
-            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+            transition: background 0.2s, transform 0.1s;
         }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
         .btn-primary {
-            background: linear-gradient(135deg, #f39c12, #e67e22);
+            background: #fd7e14;
             color: #fff;
+        }
+        .btn-primary:hover { background: #e96b00; }
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
         }
         .btn-secondary {
-            background: rgba(255,255,255,0.1);
+            background: #6c757d;
             color: #fff;
         }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-copy {
+            background: #28a745;
+            color: #fff;
+        }
+        .btn-copy:hover { background: #218838; }
         .result-box {
-            background: rgba(78,204,163,0.1);
-            border: 1px solid #4ecca3;
-            padding: 15px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 16px;
             border-radius: 8px;
-            margin-top: 15px;
+            margin-top: 16px;
             display: none;
         }
         .result-box.show { display: block; }
         .result-box p {
-            color: #fff;
-            margin-bottom: 10px;
-            font-size: 14px;
+            color: #155724;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 600;
         }
         .result-url {
             word-break: break-all;
-            color: #4ecca3;
-            font-family: monospace;
+            color: #0056b3;
+            font-family: "SF Mono", Monaco, monospace;
             font-size: 12px;
-            background: rgba(0,0,0,0.3);
+            background: #fff;
             padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 10px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            border: 1px solid #c3e6cb;
         }
         .error {
-            background: rgba(220,53,69,0.2);
-            color: #ff6b6b;
+            background: #f8d7da;
+            color: #721c24;
             padding: 12px;
-            border-radius: 8px;
-            margin-top: 15px;
+            border-radius: 6px;
+            margin-top: 16px;
             text-align: center;
             font-size: 14px;
+            border: 1px solid #f5c6cb;
         }
         .hidden { display: none; }
+        .button-row {
+            display: flex;
+            gap: 10px;
+        }
+        .button-row .btn { margin-bottom: 0; }
+        .form-row {
+            display: flex;
+            gap: 12px;
+        }
+        .form-row .form-group { flex: 1; }
+        .email-composer {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 2px solid #dee2e6;
+        }
+        .email-composer h3 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .email-composer .form-group {
+            margin-bottom: 14px;
+        }
+        .email-composer .form-group label {
+            display: block;
+            color: #555;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .email-composer input[type="text"],
+        .email-composer textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            color: #333;
+            background: #fff;
+        }
+        .email-composer input[type="text"]:focus,
+        .email-composer textarea:focus {
+            outline: none;
+            border-color: #fd7e14;
+            box-shadow: 0 0 0 3px rgba(253,126,20,0.15);
+        }
+        .email-composer textarea {
+            resize: vertical;
+            min-height: 150px;
+            line-height: 1.5;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+            text-align: center;
+            font-size: 14px;
+            display: none;
+        }
+        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
+        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
+        .status.loading { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; display: block; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Generate Payment Link</h1>
+        <h1>💳 Generate Payment Link</h1>
 
         <div class="lead-info">
             <p><strong>Lead:</strong> {$leadName}</p>
@@ -301,52 +550,154 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
         </div>
 
         <div class="form-group">
-            <label>Select Plan</label>
-            <select id="planId">{$planOptions}</select>
+            <label for="planId">Select Plan</label>
+            <select id="planId" onchange="updatePriceSummary()" style="color: #000 !important; -webkit-text-fill-color: #000 !important; background: #fff !important;">{$planOptions}</select>
         </div>
 
-        <div class="form-group">
-            <label>Discount Percentage (%)</label>
-            <input type="number" id="discount" value="{$defaultDiscount}" min="0" max="100" step="1">
+        <div class="billing-toggle">
+            <input type="radio" name="billingCycle" id="monthly" value="monthly" checked onchange="updatePriceSummary()">
+            <label for="monthly">Monthly</label>
+            <input type="radio" name="billingCycle" id="yearly" value="yearly" onchange="updatePriceSummary()">
+            <label for="yearly">Annual (Save!)</label>
         </div>
 
-        <div class="form-group">
-            <label>Offer Expires In (days)</label>
-            <input type="number" id="expiryDays" value="{$expiryDays}" min="1" max="30">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="discount">Discount (%)</label>
+                <input type="number" id="discount" value="{$defaultDiscount}" min="0" max="100" step="1" oninput="updatePriceSummary()">
+            </div>
+            <div class="form-group">
+                <label for="expiryDays">Expires In (days)</label>
+                <input type="number" id="expiryDays" value="{$expiryDays}" min="1" max="30">
+            </div>
         </div>
 
-        <button class="btn btn-primary" onclick="generateLink()" id="generateBtn">Generate Discount Link</button>
-        <button class="btn btn-secondary" onclick="window.close()">Close</button>
+        <div class="price-summary" id="priceSummary" style="display:none;">
+            <div class="price-row original">
+                <span>Original Price:</span>
+                <span class="amount" id="originalPrice">$0.00</span>
+            </div>
+            <div class="price-row discount">
+                <span>Discount (<span id="discountPct">0</span>%):</span>
+                <span class="amount" id="discountAmount">-$0.00</span>
+            </div>
+            <div class="price-row final">
+                <span>Final Price:</span>
+                <span class="amount" id="finalPrice">$0.00</span>
+            </div>
+        </div>
+
+        <div class="button-row">
+            <button class="btn btn-primary" onclick="generateLink()" id="generateBtn">Generate Discount Link</button>
+            <button class="btn btn-secondary" onclick="window.close()">Close</button>
+        </div>
 
         <div class="result-box" id="result">
-            <p><strong>Payment Link:</strong></p>
+            <p>✅ Payment Link Generated:</p>
             <div class="result-url" id="resultUrl"></div>
-            <button class="btn btn-secondary" onclick="copyUrl()">Copy URL</button>
+            <div class="button-row" style="margin-top:12px;">
+                <button class="btn btn-copy" onclick="copyUrl()">📋 Copy URL</button>
+                <button class="btn btn-primary" onclick="showEmailComposer()">📧 Compose Email</button>
+            </div>
+        </div>
+
+        <div class="email-composer" id="emailComposer" style="display:none;">
+            <h3>📧 Email Preview</h3>
+            <div class="form-group">
+                <label for="emailSubject">Subject:</label>
+                <input type="text" id="emailSubject" value="Special Offer: Exclusive Discount on Verbacall">
+            </div>
+            <div class="form-group">
+                <label for="emailBody">Message:</label>
+                <textarea id="emailBody" rows="12"></textarea>
+            </div>
+            <div class="button-row">
+                <button class="btn btn-primary" onclick="sendEmail()" id="sendEmailBtn">📤 Send Email</button>
+                <button class="btn btn-secondary" onclick="hideEmailComposer()">Cancel</button>
+            </div>
+            <div class="status" id="emailStatus"></div>
         </div>
 
         <div class="error hidden" id="error"></div>
     </div>
 
     <script>
+    function updatePriceSummary() {
+        var select = document.getElementById("planId");
+        var selectedOption = select.options[select.selectedIndex];
+        var priceSummary = document.getElementById("priceSummary");
+
+        if (!selectedOption || !selectedOption.value) {
+            priceSummary.style.display = "none";
+            return;
+        }
+
+        var isYearly = document.getElementById("yearly").checked;
+        var monthlyPrice = parseFloat(selectedOption.getAttribute("data-monthly")) || 0;
+        var yearlyPrice = parseFloat(selectedOption.getAttribute("data-yearly")) || 0;
+        var discount = parseFloat(document.getElementById("discount").value) || 0;
+
+        var basePrice = isYearly ? yearlyPrice : monthlyPrice;
+        var discountAmt = basePrice * (discount / 100);
+        var finalPrice = basePrice - discountAmt;
+        var period = isYearly ? "/year" : "/month";
+
+        document.getElementById("originalPrice").textContent = "$" + basePrice.toFixed(2) + period;
+        document.getElementById("discountPct").textContent = discount;
+        document.getElementById("discountAmount").textContent = "-$" + discountAmt.toFixed(2);
+        document.getElementById("finalPrice").textContent = "$" + finalPrice.toFixed(2) + period;
+
+        priceSummary.style.display = "block";
+    }
+
     function generateLink() {
         var btn = document.getElementById("generateBtn");
+        var planSelect = document.getElementById("planId");
+
+        if (!planSelect.value) {
+            document.getElementById("error").textContent = "Please select a plan";
+            document.getElementById("error").classList.remove("hidden");
+            return;
+        }
+
         btn.disabled = true;
         btn.textContent = "Generating...";
 
         document.getElementById("error").classList.add("hidden");
         document.getElementById("result").classList.remove("show");
 
+        var isYearly = document.getElementById("yearly").checked;
         var data = new URLSearchParams();
         data.append("create_offer", "1");
-        data.append("plan_id", document.getElementById("planId").value);
+        data.append("plan_id", planSelect.value);
         data.append("discount", document.getElementById("discount").value);
         data.append("expiry_days", document.getElementById("expiryDays").value);
+        data.append("billing_cycle", isYearly ? "yearly" : "monthly");
 
         fetch(window.location.href, {
             method: "POST",
-            body: data
+            headers: {
+                "Accept": "application/json"
+            },
+            body: data,
+            credentials: "same-origin"
         })
-        .then(function(r) { return r.json(); })
+        .then(function(response) {
+            return response.text().then(function(text) {
+                var jsonMatch = text.match(/^\s*(\{[\s\S]*?\})\s*/);
+                if (jsonMatch) {
+                    try {
+                        return JSON.parse(jsonMatch[1]);
+                    } catch (e) {}
+                }
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    console.error("Raw response:", text.substring(0, 500));
+                    throw new Error("Invalid JSON response from server");
+                }
+            });
+        })
         .then(function(data) {
             if (data.success) {
                 document.getElementById("resultUrl").textContent = data.discountUrl;
@@ -380,6 +731,88 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
             alert("URL copied to clipboard!");
         });
     }
+
+    var generatedUrl = "";
+    var leadName = "{$leadName}";
+
+    function showEmailComposer() {
+        generatedUrl = document.getElementById("resultUrl").textContent;
+        var select = document.getElementById("planId");
+        var planName = select.options[select.selectedIndex].text;
+        var discount = document.getElementById("discount").value;
+        var expiryDays = document.getElementById("expiryDays").value;
+        var finalPriceText = document.getElementById("finalPrice").textContent;
+
+        var body = "Hello " + leadName + ",\\n\\n";
+        body += "Great news! We've prepared an exclusive offer just for you.\\n\\n";
+        body += "Plan: " + planName + "\\n";
+        body += "Your Special Price: " + finalPriceText + " (" + discount + "% OFF!)\\n";
+        body += "Offer Expires: " + expiryDays + " days\\n\\n";
+        body += "Click below to claim your discount:\\n" + generatedUrl + "\\n\\n";
+        body += "This exclusive link is created just for you and will expire soon.\\n\\n";
+        body += "If you have any questions, please don't hesitate to reach out.\\n\\n";
+        body += "Best regards";
+
+        document.getElementById("emailBody").value = body;
+        document.getElementById("emailComposer").style.display = "block";
+    }
+
+    function hideEmailComposer() {
+        document.getElementById("emailComposer").style.display = "none";
+    }
+
+    function sendEmail() {
+        var btn = document.getElementById("sendEmailBtn");
+        var subject = document.getElementById("emailSubject").value;
+        var body = document.getElementById("emailBody").value;
+
+        btn.disabled = true;
+        btn.textContent = "Sending...";
+        showEmailStatus("loading", "Sending email...");
+
+        var data = new URLSearchParams();
+        data.append("send_email", "1");
+        data.append("subject", subject);
+        data.append("body", body);
+        data.append("discount_url", generatedUrl);
+
+        fetch(window.location.href, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json"
+            },
+            body: data.toString(),
+            credentials: "same-origin"
+        })
+        .then(function(response) {
+            return response.text().then(function(text) {
+                var jsonMatch = text.match(/^\\s*(\\{[\\s\\S]*?\\})\\s*/);
+                if (jsonMatch) { try { return JSON.parse(jsonMatch[1]); } catch (e) {} }
+                try { return JSON.parse(text); } catch (e) {
+                    console.error("Raw response:", text.substring(0, 500));
+                    throw new Error("Invalid JSON response");
+                }
+            });
+        })
+        .then(function(data) {
+            showEmailStatus(data.success ? "success" : "error", data.success ? "✓ " + data.message : data.message || data.error);
+            btn.disabled = false;
+            btn.textContent = "📤 Send Email";
+            if (data.success) setTimeout(hideEmailComposer, 2000);
+        })
+        .catch(function(err) {
+            showEmailStatus("error", "Error: " + err.message);
+            btn.disabled = false;
+            btn.textContent = "📤 Send Email";
+        });
+    }
+
+    function showEmailStatus(type, message) {
+        var el = document.getElementById("emailStatus");
+        el.className = "status " + type;
+        el.textContent = message;
+    }
     </script>
 </body>
 </html>
@@ -394,31 +827,65 @@ HTML;
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Error</title>
+    <title>Error - Verbacall</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background: #1a1a2e;
-            color: #ff6b6b;
-            padding: 50px;
-            text-align: center;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
-        h2 { margin-bottom: 20px; }
+        .error-container {
+            max-width: 400px;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        h2 {
+            color: #dc3545;
+            font-size: 20px;
+            margin-bottom: 12px;
+        }
+        p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
         button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            background: rgba(255,255,255,0.1);
+            padding: 10px 24px;
+            background: #6c757d;
             color: #fff;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
         }
+        button:hover { background: #5a6268; }
     </style>
 </head>
 <body>
-    <h2>Error</h2>
-    <p>{$escapedMessage}</p>
-    <button onclick="window.close()">Close</button>
+    <div class="error-container">
+        <div class="error-icon">⚠️</div>
+        <h2>Error</h2>
+        <p>{$escapedMessage}</p>
+        <button onclick="window.close()">Close</button>
+    </div>
 </body>
 </html>
 HTML;

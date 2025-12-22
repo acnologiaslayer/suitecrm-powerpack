@@ -80,11 +80,13 @@ if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legac
     rm -rf /bitnami/suitecrm/public/legacy/cache/* 2>/dev/null || true
     find /bitnami/suitecrm -type d -name "cache" -exec rm -rf {}/* \; 2>/dev/null || true
     
-    # Apply Twilio configuration from environment
-    if [ -f "/bitnami/suitecrm/config_override.php.template" ]; then
-        echo "Applying Twilio configuration..."
-        cp /bitnami/suitecrm/config_override.php.template /bitnami/suitecrm/config_override.php
-        chown daemon:daemon /bitnami/suitecrm/config_override.php
+    # Apply Twilio configuration from environment (only on first install, don't overwrite existing)
+    if [ -f "/bitnami/suitecrm/config_override.php.template" ] && [ ! -f "/bitnami/suitecrm/public/legacy/config_override.php" ]; then
+        echo "Applying PowerPack configuration..."
+        cp /bitnami/suitecrm/config_override.php.template /bitnami/suitecrm/public/legacy/config_override.php
+        chown daemon:daemon /bitnami/suitecrm/public/legacy/config_override.php
+    else
+        echo "Config override already exists, skipping to preserve settings..."
     fi
     
     # Set proper file permissions

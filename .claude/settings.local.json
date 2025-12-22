@@ -15,7 +15,16 @@
       "Bash(tree:*)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(docker network:*)",
+      "Bash(docker network inspect:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker exec:*)",
+      "Bash(cat:*)",
+      "Bash(docker cp:*)",
+      "Bash(php -l:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

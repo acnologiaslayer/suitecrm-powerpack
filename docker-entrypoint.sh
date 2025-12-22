@@ -122,7 +122,8 @@ chmod 777 /opt/bitnami/php/var/run/session 2>/dev/null || true
 chown -R daemon:daemon /opt/bitnami/php/var/run/session 2>/dev/null || true
 
 # Auto-install SuiteCRM if database credentials are provided and not yet installed
-if [ ! -f "/bitnami/suitecrm/config.php" ] && [ -n "$SUITECRM_DATABASE_HOST" ] && [ "$SUITECRM_SKIP_INSTALL" != "yes" ]; then
+# Check both possible config locations (SuiteCRM 8 uses public/legacy/config.php)
+if [ ! -f "/bitnami/suitecrm/config.php" ] && [ ! -f "/bitnami/suitecrm/public/legacy/config.php" ] && [ -n "$SUITECRM_DATABASE_HOST" ] && [ "$SUITECRM_SKIP_INSTALL" != "yes" ]; then
     echo "Database configured - running silent installation..."
     
     # Ensure all required directories exist with proper permissions before installation
@@ -212,7 +213,7 @@ if [ ! -f "/bitnami/suitecrm/config.php" ] && [ -n "$SUITECRM_DATABASE_HOST" ] &
 fi
 
 # Auto-install custom modules if SuiteCRM is installed and modules are pending
-if [ -f "/bitnami/suitecrm/config.php" ] && [ -f "/bitnami/suitecrm/.modules_pending" ]; then
+if ( [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legacy/config.php" ] ) && [ -f "/bitnami/suitecrm/.modules_pending" ]; then
     echo "Detected pending module installation..."
     echo "Installing PowerPack modules..."
 
@@ -240,9 +241,9 @@ if [ -f "/bitnami/suitecrm/config.php" ] && [ -f "/bitnami/suitecrm/.modules_pen
     fi
 fi
 
-# UPGRADE SUPPORT: Always sync critical module files from image to volume
+# UPGRADE SUPPORT: Sync critical module files from image to volume (only if SuiteCRM is installed)
 # This ensures upgrades apply new module configurations
-if [ -f "/bitnami/suitecrm/config.php" ]; then
+if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legacy/config.php" ]; then
     echo "Syncing PowerPack module files..."
 
     # Copy updated module files from image (clean copy - remove old first)
