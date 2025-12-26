@@ -27,6 +27,8 @@ class LeadJourney extends Basic {
     public $touchpoint_data; // JSON field for additional data
     public $source;
     public $campaign_id;
+    public $thread_id; // For conversation threading
+    public $recording_url; // For call recordings
 
     public function __construct() {
         parent::__construct();
@@ -282,6 +284,8 @@ class LeadJourney extends Basic {
      * Log a custom touchpoint
      */
     public static function logTouchpoint($parentType, $parentId, $touchpointType, $data = array()) {
+        require_once('modules/LeadJourney/LeadJourneyThreading.php');
+
         $journey = BeanFactory::newBean('LeadJourney');
         $journey->parent_type = $parentType;
         $journey->parent_id = $parentId;
@@ -289,12 +293,93 @@ class LeadJourney extends Basic {
         $journey->touchpoint_date = date('Y-m-d H:i:s');
         $journey->touchpoint_data = json_encode($data);
         $journey->name = $touchpointType . ' - ' . date('Y-m-d H:i:s');
-        
+
         if (isset($data['source'])) {
             $journey->source = $data['source'];
         }
-        
+
+        // Set recording URL if provided
+        if (isset($data['recording_url'])) {
+            $journey->recording_url = $data['recording_url'];
+        }
+
+        // Generate thread ID for conversation grouping
+        $journey->thread_id = LeadJourneyThreading::findOrCreateThreadId(
+            $parentType,
+            $parentId,
+            $touchpointType,
+            $data
+        );
+
         $journey->save();
         return $journey->id;
+    }
+
+    /**
+     * Get threaded conversation timeline for a lead/contact
+     * Groups related activities into conversations
+     */
+    public static function getThreadedTimeline($parentType, $parentId) {
+        require_once('modules/LeadJourney/LeadJourneyThreading.php');
+
+        $flatTimeline = self::getJourneyTimeline($parentType, $parentId);
+        return LeadJourneyThreading::groupIntoThreads($flatTimeline);
+    }
+
+    /**
+     * Get custom touchpoints from lead_journey table (includes call/SMS logged by LeadJourneyLogger)
+     */
+    public static function getCustomTouchpoints($parentType, $parentId) {
+        global $db;
+
+        $query = "SELECT lj.id, lj.name, lj.touchpoint_date, lj.touchpoint_type,
+                         lj.touchpoint_data, lj.thread_id, lj.recording_url
+                  FROM lead_journey lj
+                  WHERE lj.parent_type = " . $db->quoted($parentType) . "
+                  AND lj.parent_id = " . $db->quoted($parentId) . "
+                  AND lj.deleted = 0
+                  ORDER BY lj.touchpoint_date DESC";
+
+        $result = $db->query($query);
+        $touchpoints = array();
+
+        while ($row = $db->fetchByAssoc($result)) {
+            $data = json_decode($row['touchpoint_data'], true) ?: [];
+            $touchpoints[] = array(
+                'id' => $row['id'],
+                'type' => $row['touchpoint_type'],
+                'icon' => self::getIconForType($row['touchpoint_type']),
+                'title' => $row['name'],
+                'date' => $row['touchpoint_date'],
+                'thread_id' => $row['thread_id'],
+                'recording_url' => $row['recording_url'] ?: ($data['recording_url'] ?? null),
+                'touchpoint_data' => $data,
+                'description' => $data['description'] ?? '',
+            );
+        }
+
+        return $touchpoints;
+    }
+
+    /**
+     * Get icon for touchpoint type
+     */
+    private static function getIconForType($type) {
+        $icons = array(
+            'call' => 'phone',
+            'inbound_call' => 'phone',
+            'outbound_call' => 'phone',
+            'voicemail' => 'voicemail',
+            'sms' => 'sms',
+            'inbound_sms' => 'sms',
+            'outbound_sms' => 'sms',
+            'email' => 'envelope',
+            'inbound_email' => 'envelope',
+            'site_visit' => 'globe',
+            'linkedin_click' => 'linkedin',
+            'campaign' => 'bullhorn',
+            'meeting' => 'calendar',
+        );
+        return $icons[$type] ?? 'circle';
     }
 }

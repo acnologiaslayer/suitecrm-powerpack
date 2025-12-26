@@ -779,6 +779,17 @@ EOF
             ADD INDEX idx_assigned_user (assigned_user_id);
     " 2>/dev/null && echo "  Recording columns added to lead_journey" || echo "  Recording columns already exist in lead_journey"
 
+    # Add thread_id column to lead_journey table for conversation threading
+    echo "Adding thread_id column to lead_journey table..."
+    mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "
+        SELECT COUNT(*) FROM information_schema.columns
+        WHERE table_schema='$SUITECRM_DATABASE_NAME' AND table_name='lead_journey' AND column_name='thread_id'
+    " | grep -q '^0$' && mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -e "
+        ALTER TABLE lead_journey
+            ADD COLUMN thread_id VARCHAR(64) DEFAULT NULL,
+            ADD INDEX idx_thread_id (thread_id);
+    " 2>/dev/null && echo "  Thread ID column added to lead_journey" || echo "  Thread ID column already exists in lead_journey"
+
     echo "Database tables and custom fields setup complete"
 fi
 

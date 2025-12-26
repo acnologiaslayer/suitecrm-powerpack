@@ -4,16 +4,19 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v2.5.14
+**Current Version**: v2.5.28
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
 
-This is a Docker-based SuiteCRM extension with five custom modules for sales operations:
+This is a Docker-based SuiteCRM extension with eight custom modules for sales operations:
 
 1. **TwilioIntegration** - Click-to-call, SMS, auto-logging
 2. **LeadJourney** - Customer journey timeline tracking
 3. **FunnelDashboard** - Sales funnel visualization with role-based dashboards
 4. **SalesTargets** - BDM/Team target tracking with commissions
 5. **Packages** - Service packages with pricing
+6. **Webhooks** - Notification webhook API for external integrations
+7. **NotificationHub** - Real-time WebSocket notification system
+8. **VerbacallIntegration** - Signup and payment link generation for Leads
 
 ---
 
@@ -80,6 +83,7 @@ lead-journey:
 /home/mahir/Projects/suitecrm/
 ├── Dockerfile                    # Docker build instructions
 ├── docker-compose.yml            # Local development
+├── docker-compose.production.yml # Production template (external DB)
 ├── docker-entrypoint.sh          # Container startup script
 ├── .env.example                  # Environment template
 │
@@ -102,6 +106,9 @@ lead-journey:
 │   ├── Packages/                 # Service packages module
 │   ├── TwilioIntegration/        # Twilio calling module
 │   ├── LeadJourney/              # Journey timeline module
+│   ├── Webhooks/                 # Notification webhook API
+│   ├── NotificationHub/          # Real-time notifications
+│   ├── VerbacallIntegration/     # Verbacall signup/payment links
 │   └── Extensions/               # App-level extensions
 │       └── application/
 │           └── Ext/
@@ -114,10 +121,19 @@ lead-journey:
 │   ├── enable-modules-suite8.sh  # Enable modules in user preferences
 │   └── silent-install.sh         # Automated SuiteCRM installation
 │
-└── config/
-    └── custom-extensions/
-        └── dist/
-            └── twilio-click-to-call.js
+├── config/
+│   ├── custom-extensions/
+│   │   └── dist/
+│   │       ├── twilio-click-to-call.js   # Click-to-call for Angular UI
+│   │       ├── notification-ws.js        # WebSocket notification client
+│   │       └── verbacall-integration.js  # Verbacall buttons for Leads
+│   └── notification-websocket/           # Node.js WebSocket server
+│       ├── server.js
+│       └── package.json
+│
+└── docs/
+    ├── UPGRADE_GUIDE.md              # Upgrade instructions
+    └── NOTIFICATION_WEBHOOK.md       # Webhook API documentation
 ```
 
 ### Container Paths (Bitnami)
@@ -138,18 +154,23 @@ lead-journey:
 
 ```sql
 -- PowerPack module tables
-twilio_integration      -- Twilio configuration
-twilio_audit_log        -- Call/SMS audit trail
-lead_journey           -- Touchpoint tracking
-funnel_dashboard       -- Dashboard configurations
-sales_targets          -- BDM/Team targets
-packages               -- Service packages
+twilio_integration         -- Twilio configuration
+twilio_audit_log           -- Call/SMS audit trail
+lead_journey               -- Touchpoint tracking
+funnel_dashboard           -- Dashboard configurations
+sales_targets              -- BDM/Team targets
+packages                   -- Service packages
+notification_queue         -- WebSocket notification queue
+notification_api_keys      -- Webhook authentication keys
+notification_rate_limit    -- Rate limiting for webhook API
 
 -- Custom fields added to standard tables
 leads.funnel_type_c           -- VARCHAR(100) - Funnel category
 leads.pipeline_stage_c        -- VARCHAR(100) - Current stage
 leads.demo_scheduled_c        -- TINYINT(1) - Demo flag
 leads.expected_revenue_c      -- DECIMAL(26,6)
+leads.verbacall_signup_c      -- TINYINT(1) - Verbacall signup status
+leads.verbacall_link_sent_c   -- DATETIME - When signup link was sent
 opportunities.funnel_type_c   -- VARCHAR(100)
 opportunities.package_id_c    -- VARCHAR(36) - FK to packages
 opportunities.commission_amount_c -- DECIMAL(26,6)
@@ -221,6 +242,85 @@ $app_list_strings['pipeline_stage_list'] = [
 **Cause**: Complex ACL checks failing before `isAdmin()` check
 **Fix**: Simplify `SugarACL*.php` to `return true;` and use Role Management UI
 
+### Issue: Database connection timeout with external database
+**Cause**: Docker bridge network cannot reach managed databases on non-standard ports
+**Fix**: Use `network_mode: host` in docker-compose.yml (see `docker-compose.production.yml`)
+
+### Issue: JS files not loading in Angular UI
+**Cause**: Files copied to wrong location or missing from index.html
+**Fix**: Files must be in `/bitnami/suitecrm/public/dist/` and injected into index.html
+
+### Issue: Modules not appearing after upgrade
+**Cause**: install-modules.sh checking wrong source path
+**Fix**: Script now checks `/opt/bitnami/suitecrm/modules/` (image source) first
+
+---
+
+## Production Deployment
+
+### External Database Requirements
+
+When connecting to managed databases (DigitalOcean, AWS RDS, Azure), you **MUST** use `network_mode: host`:
+
+```yaml
+# docker-compose.production.yml
+services:
+  suitecrm:
+    image: mahir009/suitecrm-powerpack:latest
+    network_mode: host  # CRITICAL for external DB access
+    env_file:
+      - ./suitecrm/.env
+```
+
+**Why?** Docker bridge networks cannot reliably reach external IPs on non-standard ports (like DigitalOcean's 25060).
+
+### Nginx Reverse Proxy with Host Network
+
+When suitecrm uses `network_mode: host`, nginx must proxy to `host.docker.internal`:
+
+```nginx
+location / {
+    proxy_pass http://host.docker.internal:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+### WebSocket Port Configuration
+
+The WebSocket server runs on port 3001. For SSL:
+
+```nginx
+server {
+    listen 3001 ssl;
+    server_name your-domain.com;
+
+    ssl_certificate /etc/nginx/certs/your-domain.crt;
+    ssl_certificate_key /etc/nginx/certs/your-domain.key;
+
+    location / {
+        proxy_pass http://host.docker.internal:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+    }
+}
+```
+
+### Upgrade Checklist
+
+1. **Backup database** before upgrading
+2. **Pull new image**: `docker pull mahir009/suitecrm-powerpack:vX.Y.Z`
+3. **Update docker-compose.yml** with new image tag
+4. **Restart container**: `docker-compose down && docker-compose up -d`
+5. **Verify**: Check logs for "Module sync complete" message
+6. **Clear browser cache** if UI elements don't appear
+
+See `docs/UPGRADE_GUIDE.md` for detailed upgrade instructions.
+
 ---
 
 ## Development Workflow
@@ -284,25 +384,35 @@ rm -rf /bitnami/suitecrm/public/legacy/cache/*
 ```bash
 # Database (required)
 SUITECRM_DATABASE_HOST=
-SUITECRM_DATABASE_PORT=3306
+SUITECRM_DATABASE_PORT_NUMBER=3306
 SUITECRM_DATABASE_NAME=suitecrm
 SUITECRM_DATABASE_USER=
 SUITECRM_DATABASE_PASSWORD=
 
-# SSL for managed databases (optional)
-MYSQL_SSL_CA=/path/to/ca-certificate.crt
+# SSL for managed databases (DigitalOcean, AWS RDS, etc.)
+MYSQL_SSL_CA=/opt/bitnami/mysql/certs/ca-certificate.crt
 MYSQL_CLIENT_ENABLE_SSL=yes
-
-# Twilio (optional)
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_PHONE_NUMBER=
-TWILIO_FALLBACK_PHONE=
 
 # SuiteCRM
 SUITECRM_USERNAME=admin
 SUITECRM_PASSWORD=
 SUITECRM_EMAIL=admin@example.com
+SUITECRM_SITE_URL=https://your-domain.com
+
+# Twilio Integration (optional)
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+TWILIO_FALLBACK_PHONE=
+
+# Verbacall Integration (optional)
+VERBACALL_API_URL=https://demo-ai.verbacall.com    # API endpoint
+VERBACALL_APP_URL=https://app.verbacall.com        # Frontend URL
+
+# WebSocket Notifications (optional)
+NOTIFICATION_JWT_SECRET=your-secure-random-string
+NOTIFICATION_WS_URL=wss://your-domain.com:3001
+NOTIFICATION_WS_PORT=3001
 ```
 
 ---
@@ -325,6 +435,15 @@ docker push mahir009/suitecrm-powerpack:latest
 
 ## Version History (Recent)
 
+- **v2.5.28** - Fix production upgrade issues:
+  - Fix JS files copied to wrong location (now `/bitnami/suitecrm/public/dist/`)
+  - Fix module path check in install-modules.sh (checks image source first)
+  - Add JS injection during upgrade (not just first run)
+  - Add docker-compose.production.yml for external database deployments
+  - Add production deployment documentation
+- **v2.5.19** - Hybrid notification system (REST API + WebSocket)
+- **v2.5.18** - Twilio browser-based calling enhancements
+- **v2.5.17** - VerbacallIntegration module, NotificationHub, Webhooks
 - **v2.5.8** - Fix FunnelDashboard not showing in production:
   - Add view.index.php to redirect index action to dashboard
   - Add action_index() to controller for SuiteCRM 8 Angular navigation
@@ -366,3 +485,7 @@ docker exec suitecrm-test php /bitnami/suitecrm/public/legacy/bin/console suitec
 4. **Bitnami paths differ from standard** - Use `/bitnami/suitecrm/` not `/var/www/html/`
 5. **Cache clearing is often needed** - After config changes, clear both Angular and Legacy caches
 6. **Test in container first** - Use `docker exec` to test changes before committing
+7. **JS files go in `/public/dist/`** - Angular UI JS files must be in `/bitnami/suitecrm/public/dist/` and injected into index.html
+8. **Module source is `/opt/bitnami/`** - During upgrades, modules are sourced from image at `/opt/bitnami/suitecrm/modules/`
+9. **External DB requires host network** - Use `network_mode: host` for managed databases (DigitalOcean, AWS RDS)
+10. **WebSocket runs on port 3001** - Separate SSL nginx block needed for WSS
