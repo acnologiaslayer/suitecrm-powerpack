@@ -32,27 +32,31 @@ class LeadJourneyThreading
         $emails = [];
         $calls = [];
         $sms = [];
+        $verbacall = [];
         $other = [];
 
         foreach ($timeline as $item) {
-            switch ($item['type']) {
-                case 'email':
-                case 'inbound_email':
-                    $emails[] = $item;
-                    break;
-                case 'call':
-                case 'inbound_call':
-                case 'outbound_call':
-                case 'voicemail':
-                    $calls[] = $item;
-                    break;
-                case 'sms':
-                case 'inbound_sms':
-                case 'outbound_sms':
-                    $sms[] = $item;
-                    break;
-                default:
-                    $other[] = $item;
+            $type = $item['type'] ?? '';
+
+            // Check for email types
+            if (in_array($type, ['email', 'inbound_email'])) {
+                $emails[] = $item;
+            }
+            // Check for call types
+            elseif (in_array($type, ['call', 'inbound_call', 'outbound_call', 'voicemail'])) {
+                $calls[] = $item;
+            }
+            // Check for SMS types
+            elseif (in_array($type, ['sms', 'inbound_sms', 'outbound_sms'])) {
+                $sms[] = $item;
+            }
+            // Check for Verbacall/custom touchpoint types (group by time proximity)
+            elseif (strpos($type, 'verbacall') !== false || strpos($type, 'signup') !== false || strpos($type, 'payment') !== false) {
+                $verbacall[] = $item;
+            }
+            // Everything else
+            else {
+                $other[] = $item;
             }
         }
 
@@ -60,9 +64,10 @@ class LeadJourneyThreading
         $groupedEmails = self::groupEmailsBySubject($emails);
         $groupedCalls = self::groupByTimeProximity($calls, 'Call Conversation');
         $groupedSms = self::groupByTimeProximity($sms, 'SMS Conversation');
+        $groupedVerbacall = self::groupByTimeProximity($verbacall, 'Verbacall Activity');
 
         // Merge all groups and other items
-        $threaded = array_merge($groupedEmails, $groupedCalls, $groupedSms);
+        $threaded = array_merge($groupedEmails, $groupedCalls, $groupedSms, $groupedVerbacall);
 
         // Add non-grouped items
         foreach ($other as $item) {

@@ -72,12 +72,16 @@ class LeadJourney extends Basic {
         // Get Campaign Responses
         $campaigns = self::getCampaignResponses($parentType, $parentId);
         $timeline = array_merge($timeline, $campaigns);
-        
+
+        // Get Custom Touchpoints (from lead_journey table)
+        $customTouchpoints = self::getCustomTouchpoints($parentType, $parentId);
+        $timeline = array_merge($timeline, $customTouchpoints);
+
         // Sort by date descending
         usort($timeline, function($a, $b) {
             return strtotime($b['date']) - strtotime($a['date']);
         });
-        
+
         return $timeline;
     }
     
