@@ -8,6 +8,7 @@ if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
 
 require_once('modules/TwilioIntegration/TwilioIntegration.php');
 require_once('modules/TwilioIntegration/TwilioSecurity.php');
+require_once('modules/LeadJourney/LeadJourneyLogger.php');
 
 class TwilioIntegrationViewSms_webhook extends SugarView
 {
@@ -146,7 +147,30 @@ class TwilioIntegrationViewSms_webhook extends SugarView
             'lead_id' => $leadInfo ? $leadInfo['id'] : null,
             'lead_type' => $leadInfo ? $leadInfo['type'] : null
         ));
-        
+
+        // Log to LeadJourney for unified timeline
+        if ($leadInfo) {
+            $mediaUrls = [];
+            for ($i = 0; $i < $numMedia; $i++) {
+                $mediaUrl = isset($_REQUEST["MediaUrl$i"]) ? $_REQUEST["MediaUrl$i"] : '';
+                if (!empty($mediaUrl)) {
+                    $mediaUrls[] = $mediaUrl;
+                }
+            }
+
+            LeadJourneyLogger::logSMS([
+                'message_sid' => $messageSid,
+                'from' => $from,
+                'to' => $to,
+                'body' => $body,
+                'direction' => 'inbound',
+                'media_urls' => $mediaUrls,
+                'parent_type' => $leadInfo['type'],
+                'parent_id' => $leadInfo['id'],
+                'assigned_user_id' => $leadInfo['assigned_user_id']
+            ]);
+        }
+
         $GLOBALS['log']->info("Logged inbound SMS - Note ID: $noteId, SID: $messageSid");
         
         // If no lead found, optionally create a new lead

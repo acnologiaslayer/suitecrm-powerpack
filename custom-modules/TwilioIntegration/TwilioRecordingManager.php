@@ -6,6 +6,8 @@
 
 if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
 
+require_once('modules/LeadJourney/LeadJourneyLogger.php');
+
 class TwilioRecordingManager
 {
     private $storagePath;
@@ -305,6 +307,19 @@ class TwilioRecordingManager
 
         if ($result) {
             $GLOBALS['log']->info("TwilioRecordingManager: Successfully processed recording $recordingSid");
+
+            // Update LeadJourney with recording information
+            $journeyId = LeadJourneyLogger::findByCallSid($callSid);
+            if ($journeyId) {
+                $recordingUrl = "index.php?module=TwilioIntegration&action=recording&recording_id=" . urlencode($recordingSid);
+                LeadJourneyLogger::updateWithRecording(
+                    $journeyId,
+                    $recordingUrl,
+                    $recordingSid,
+                    $result['document_id'] ?? ''
+                );
+                $GLOBALS['log']->info("TwilioRecordingManager: Updated LeadJourney $journeyId with recording");
+            }
         } else {
             $GLOBALS['log']->error("TwilioRecordingManager: Failed to process recording $recordingSid");
         }

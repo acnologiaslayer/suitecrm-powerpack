@@ -1,28 +1,78 @@
 <?php
 require_once('include/MVC/View/SugarView.php');
+require_once('modules/ACLActions/ACLAction.php');
 
 class LeadJourneyViewTimeline extends SugarView {
+    private $canViewRecordings = false;
+
     public function display() {
+        global $current_user;
+
         $parentType = $_GET['parent_type'] ?? 'Leads';
         $parentId = $_GET['parent_id'] ?? '';
-        
+
         if (empty($parentId)) {
             echo '<div class="alert alert-warning">No record specified</div>';
             return;
         }
-        
+
         // Get the parent record
         $parent = BeanFactory::getBean($parentType, $parentId);
-        
+
         if (!$parent) {
             echo '<div class="alert alert-danger">Record not found</div>';
             return;
         }
-        
+
+        // Check if user can view recordings
+        $this->canViewRecordings = $this->checkRecordingPermission();
+
         // Get timeline data
         $timeline = LeadJourney::getJourneyTimeline($parentType, $parentId);
-        
+
         echo $this->renderTimeline($parent, $timeline);
+    }
+
+    /**
+     * Check if current user has permission to view recordings
+     */
+    private function checkRecordingPermission() {
+        global $current_user;
+
+        if (empty($current_user) || empty($current_user->id)) {
+            return false;
+        }
+
+        // Admins always have access
+        if ($current_user->isAdmin()) {
+            return true;
+        }
+
+        // Check ACL action
+        $access = ACLAction::getUserAccessLevel($current_user->id, 'TwilioIntegration', 'view_recordings');
+        if ($access >= 90) {
+            return true;
+        }
+
+        // Check role-based access
+        $db = DBManagerFactory::getInstance();
+        $userId = $db->quote($current_user->id);
+
+        $sql = "SELECT ara.access
+                FROM acl_roles_users aru
+                JOIN acl_roles_actions ara ON aru.role_id = ara.role_id
+                JOIN acl_actions aa ON ara.action_id = aa.id
+                WHERE aru.user_id = '$userId'
+                AND aru.deleted = 0
+                AND ara.deleted = 0
+                AND aa.category = 'TwilioIntegration'
+                AND aa.name = 'view_recordings'
+                AND aa.deleted = 0
+                AND ara.access >= 90
+                LIMIT 1";
+
+        $result = $db->query($sql);
+        return (bool)$db->fetchByAssoc($result);
     }
     
     private function renderTimeline($parent, $timeline) {
@@ -200,6 +250,22 @@ class LeadJourneyViewTimeline extends SugarView {
                             <?php if (isset($item['status'])): ?>
                                 | Status: <?php echo htmlspecialchars($item['status']); ?>
                             <?php endif; ?>
+                            <?php
+                            // Show recording link if available and user has permission
+                            $recordingUrl = $this->getRecordingUrl($item);
+                            if ($recordingUrl && $this->canViewRecordings): ?>
+                                <div class="recording-link" style="margin-top: 8px;">
+                                    <audio controls style="height: 30px; width: 100%; max-width: 300px;">
+                                        <source src="<?php echo htmlspecialchars($recordingUrl); ?>" type="audio/mpeg">
+                                        Your browser does not support the audio element.
+                                    </audio>
+                                    <a href="<?php echo htmlspecialchars($recordingUrl); ?>" class="btn btn-sm btn-outline-primary" download style="margin-left: 10px;">Download</a>
+                                </div>
+                            <?php elseif ($recordingUrl && !$this->canViewRecordings): ?>
+                                <div class="recording-restricted" style="margin-top: 8px; color: #999; font-style: italic;">
+                                    Recording available (permission required)
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -245,7 +311,39 @@ class LeadJourneyViewTimeline extends SugarView {
             'globe' => '🌐',
             'linkedin' => '💼',
             'bullhorn' => '📢',
+            'voicemail' => '📼',
+            'sms' => '💬',
         );
         return $icons[$icon] ?? '•';
+    }
+
+    /**
+     * Get recording URL from timeline item data
+     */
+    private function getRecordingUrl($item) {
+        // Check for recording in extra data
+        if (!empty($item['recording_url'])) {
+            return $item['recording_url'];
+        }
+
+        // Check in touchpoint_data
+        if (!empty($item['touchpoint_data'])) {
+            $data = is_array($item['touchpoint_data']) ? $item['touchpoint_data'] : json_decode($item['touchpoint_data'], true);
+            if (!empty($data['recording_url'])) {
+                return $data['recording_url'];
+            }
+
+            // Build URL from recording_sid if available
+            if (!empty($data['recording_sid'])) {
+                return 'index.php?module=TwilioIntegration&action=recording&recording_id=' . urlencode($data['recording_sid']);
+            }
+
+            // Build URL from document_id if available
+            if (!empty($data['document_id'])) {
+                return 'index.php?module=TwilioIntegration&action=recording&document_id=' . urlencode($data['document_id']);
+            }
+        }
+
+        return null;
     }
 }

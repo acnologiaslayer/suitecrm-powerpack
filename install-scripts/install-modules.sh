@@ -229,6 +229,7 @@ $app_strings['LBL_ACTION_CRO_DASHBOARD'] = 'CRO Dashboard';
 $app_strings['LBL_ACTION_SALESOPS_DASHBOARD'] = 'Sales Ops Dashboard';
 $app_strings['LBL_ACTION_BDM_DASHBOARD'] = 'BDM Dashboard';
 $app_strings['LBL_ACTION_DASHBOARD'] = 'Dashboard';
+$app_strings['LBL_ACTION_VIEW_RECORDINGS'] = 'View Call Recordings';
 PHPEOF
 
 # Create module registration files directly
@@ -794,6 +795,11 @@ FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='TwilioInte
 INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
 SELECT UUID(), NOW(), NOW(), '1', '1', 'list', 'TwilioIntegration', 'module', 90, 0
 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='TwilioIntegration' AND name='list' AND deleted=0);
+
+-- TwilioIntegration custom action for recording permissions
+INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
+SELECT UUID(), NOW(), NOW(), '1', '1', 'view_recordings', 'TwilioIntegration', 'module', -99, 0
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='TwilioIntegration' AND name='view_recordings' AND deleted=0);
 
 -- LeadJourney standard actions
 INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)

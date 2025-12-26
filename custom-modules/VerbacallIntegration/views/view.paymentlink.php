@@ -80,6 +80,7 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
         $planId = $_POST['plan_id'] ?? '';
         $discount = floatval($_POST['discount'] ?? 10);
         $expiryDays = intval($_POST['expiry_days'] ?? 7);
+        $billingCycle = $_POST['billing_cycle'] ?? 'monthly'; // 'monthly' or 'yearly'
 
         if (empty($planId)) {
             echo json_encode(['success' => false, 'error' => 'Please select a plan']);
@@ -102,13 +103,32 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
             // Get current user's email for tracking
             $createdBy = !empty($current_user->email1) ? $current_user->email1 : null;
 
-            $result = $client->createDiscountOffer(
+            // Get plan details to calculate discounted price
+            $plan = $client->getPlan($planId);
+
+            // Calculate the discounted price based on billing cycle
+            $discountedPrice = null;
+            $priceField = null;
+
+            if ($billingCycle === 'yearly') {
+                $yearlyPrice = floatval($plan['yearlyPrice'] ?? 0);
+                $discountedPrice = $yearlyPrice * (1 - ($discount / 100));
+                $priceField = 'discountedYearlyPrice';
+            } else {
+                $monthlyPrice = floatval($plan['monthlyPrice'] ?? 0);
+                $discountedPrice = $monthlyPrice * (1 - ($discount / 100));
+                $priceField = 'discountedMonthlyPrice';
+            }
+
+            $result = $client->createDiscountOfferWithPrice(
                 $lead->email1,
                 $planId,
                 $discount,
                 $lead->id,
                 $expiryDays,
-                $createdBy
+                $createdBy,
+                $billingCycle,
+                $discountedPrice
             );
 
             // Log to Lead Journey

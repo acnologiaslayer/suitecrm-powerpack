@@ -8,6 +8,7 @@ if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
 
 require_once('modules/TwilioIntegration/TwilioIntegration.php');
 require_once('modules/TwilioIntegration/TwilioSecurity.php');
+require_once('modules/LeadJourney/LeadJourneyLogger.php');
 
 class TwilioIntegrationViewWebhook extends SugarView
 {
@@ -181,7 +182,22 @@ class TwilioIntegrationViewWebhook extends SugarView
             'lead_id' => $leadInfo ? $leadInfo['id'] : null,
             'lead_type' => $leadInfo ? $leadInfo['type'] : null
         ));
-        
+
+        // Log to LeadJourney for unified timeline
+        if ($leadInfo) {
+            LeadJourneyLogger::logCall([
+                'call_sid' => $callSid,
+                'from' => $from,
+                'to' => $to,
+                'direction' => 'inbound',
+                'status' => $status,
+                'duration' => 0, // Will be updated by status webhook
+                'parent_type' => $leadInfo['type'],
+                'parent_id' => $leadInfo['id'],
+                'assigned_user_id' => $leadInfo['assigned_user_id']
+            ]);
+        }
+
         $GLOBALS['log']->info("Logged inbound call - CRM ID: $callId, SID: $callSid");
     }
     
@@ -234,7 +250,24 @@ class TwilioIntegrationViewWebhook extends SugarView
                     'status' => $status,
                     'duration' => $duration
                 ));
-                
+
+                // Update or create LeadJourney entry with final status
+                $journeyId = LeadJourneyLogger::findByCallSid($callSid);
+                if (!$journeyId && !empty($call->parent_type) && !empty($call->parent_id)) {
+                    // Create journey entry if it doesn't exist (for outbound calls)
+                    LeadJourneyLogger::logCall([
+                        'call_sid' => $callSid,
+                        'from' => $from,
+                        'to' => $to,
+                        'direction' => ($direction === 'inbound') ? 'inbound' : 'outbound',
+                        'status' => $status,
+                        'duration' => intval($duration),
+                        'parent_type' => $call->parent_type,
+                        'parent_id' => $call->parent_id,
+                        'assigned_user_id' => $call->assigned_user_id
+                    ]);
+                }
+
                 $GLOBALS['log']->info("Updated call status - ID: {$row['id']}, Status: $status, Duration: $duration");
             }
         } else {

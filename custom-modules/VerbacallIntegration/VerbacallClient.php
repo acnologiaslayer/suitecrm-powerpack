@@ -90,7 +90,7 @@ class VerbacallClient
     }
 
     /**
-     * Create a discount offer
+     * Create a discount offer (legacy method - sends percentage only)
      * POST /api/discount-offers
      *
      * @param string $email Customer email
@@ -116,6 +116,55 @@ class VerbacallClient
 
         if ($createdBy) {
             $payload['createdBy'] = $createdBy;
+        }
+
+        $response = $this->makeRequest($url, $payload, 'POST');
+
+        return $response;
+    }
+
+    /**
+     * Create a discount offer with specific discounted price
+     * POST /api/discount-offers
+     *
+     * IMPORTANT: Only sends ONE discounted price field based on billing cycle.
+     * The API requires either discountedMonthlyPrice OR discountedYearlyPrice, not both.
+     *
+     * @param string $email Customer email
+     * @param int $planId Plan ID
+     * @param float $discountPercentage Discount percentage (1-100)
+     * @param string $suitecrmLeadId SuiteCRM Lead ID for tracking
+     * @param int $expiryDays Days until offer expires (default: 7)
+     * @param string|null $createdBy BDR email who created it
+     * @param string $billingCycle 'monthly' or 'yearly'
+     * @param float $discountedPrice The calculated discounted price
+     * @return array Discount offer details including discountUrl
+     * @throws Exception on API error
+     */
+    public function createDiscountOfferWithPrice($email, $planId, $discountPercentage, $suitecrmLeadId, $expiryDays = 7, $createdBy = null, $billingCycle = 'monthly', $discountedPrice = null)
+    {
+        $url = $this->apiUrl . '/api/discount-offers';
+
+        $payload = [
+            'email' => $email,
+            'planId' => intval($planId),
+            'discountPercentage' => floatval($discountPercentage),
+            'suitecrmLeadId' => $suitecrmLeadId,
+            'expiryDays' => intval($expiryDays)
+        ];
+
+        if ($createdBy) {
+            $payload['createdBy'] = $createdBy;
+        }
+
+        // Send ONLY the relevant discounted price based on billing cycle
+        // The API fails if both are sent
+        if ($discountedPrice !== null) {
+            if ($billingCycle === 'yearly') {
+                $payload['discountedYearlyPrice'] = round(floatval($discountedPrice), 2);
+            } else {
+                $payload['discountedMonthlyPrice'] = round(floatval($discountedPrice), 2);
+            }
         }
 
         $response = $this->makeRequest($url, $payload, 'POST');
