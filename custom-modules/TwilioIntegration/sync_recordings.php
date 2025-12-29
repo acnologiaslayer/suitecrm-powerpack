@@ -133,7 +133,9 @@ foreach ($calls as $call) {
         continue;
     }
 
-    echo "  Matched lead: {$lead['first_name']} {$lead['last_name']} ({$lead['id']})\n";
+    $leadName = trim("{$lead['first_name']} {$lead['last_name']}");
+    $leadNameSafe = preg_replace('/[^a-zA-Z0-9_-]/', '_', $leadName); // Safe for filenames
+    echo "  Matched lead: $leadName ({$lead['id']})\n";
 
     // Check for recording
     $recordingUrl = null;
@@ -171,7 +173,8 @@ foreach ($calls as $call) {
         curl_close($ch);
 
         if ($mp3Code === 200 && !empty($mp3Data)) {
-            $filename = "recording_" . date('Y-m-d_His', strtotime($startTime)) . "_{$recordingSid}.mp3";
+            // Include lead name in filename for easy identification
+            $filename = "recording_" . date('Y-m-d_His', strtotime($startTime)) . "_{$leadNameSafe}_{$recordingSid}.mp3";
             $filepath = $recordingsDir . '/' . $filename;
 
             if (file_put_contents($filepath, $mp3Data)) {
@@ -185,10 +188,21 @@ foreach ($calls as $call) {
     // Create LeadJourney entry
     $callDirection = (strpos($direction, 'outbound') !== false) ? 'outbound' : 'inbound';
 
+    // Determine caller/recipient names based on direction
+    $callerName = '';
+    $recipientName = '';
+    if ($callDirection === 'inbound') {
+        $callerName = $leadName;  // Lead is calling us
+    } else {
+        $recipientName = $leadName;  // We are calling the lead
+    }
+
     $journeyId = LeadJourneyLogger::logCall([
         'call_sid' => $callSid,
         'from' => $from,
         'to' => $to,
+        'caller_name' => $callerName,
+        'recipient_name' => $recipientName,
         'direction' => $callDirection,
         'status' => $status,
         'duration' => $duration,

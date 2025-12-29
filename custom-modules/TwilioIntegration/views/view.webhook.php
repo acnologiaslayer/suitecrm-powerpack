@@ -189,6 +189,8 @@ class TwilioIntegrationViewWebhook extends SugarView
                 'call_sid' => $callSid,
                 'from' => $from,
                 'to' => $to,
+                'caller_name' => $leadInfo['name'],  // Inbound: lead is calling us
+                'recipient_name' => '',
                 'direction' => 'inbound',
                 'status' => $status,
                 'duration' => 0, // Will be updated by status webhook
@@ -254,11 +256,22 @@ class TwilioIntegrationViewWebhook extends SugarView
                 // Update or create LeadJourney entry with final status
                 $journeyId = LeadJourneyLogger::findByCallSid($callSid);
                 if (!$journeyId && !empty($call->parent_type) && !empty($call->parent_id)) {
+                    // Get lead/contact name for the log
+                    $leadInfo = null;
+                    if ($direction === 'inbound') {
+                        $leadInfo = $this->findLeadByPhone($from);
+                    } else {
+                        $leadInfo = $this->findLeadByPhone($to);
+                    }
+                    $contactName = $leadInfo ? $leadInfo['name'] : '';
+
                     // Create journey entry if it doesn't exist (for outbound calls)
                     LeadJourneyLogger::logCall([
                         'call_sid' => $callSid,
                         'from' => $from,
                         'to' => $to,
+                        'caller_name' => ($direction === 'inbound') ? $contactName : '',
+                        'recipient_name' => ($direction !== 'inbound') ? $contactName : '',
                         'direction' => ($direction === 'inbound') ? 'inbound' : 'outbound',
                         'status' => $status,
                         'duration' => intval($duration),

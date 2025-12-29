@@ -16,6 +16,8 @@ class LeadJourneyLogger
      *   - call_sid: Twilio Call SID
      *   - from: Caller phone number
      *   - to: Recipient phone number
+     *   - caller_name: Name of the caller (optional)
+     *   - recipient_name: Name of the recipient (optional)
      *   - direction: 'inbound' or 'outbound'
      *   - status: Call status (completed, no-answer, busy, failed)
      *   - duration: Call duration in seconds
@@ -39,11 +41,21 @@ class LeadJourneyLogger
         $duration = intval($data['duration'] ?? 0);
         $from = $data['from'] ?? '';
         $to = $data['to'] ?? '';
+        $callerName = $data['caller_name'] ?? '';
+        $recipientName = $data['recipient_name'] ?? '';
 
-        // Build name
+        // Build name with caller/recipient names
         $dirLabel = ($direction === 'inbound') ? 'Inbound' : 'Outbound';
         $statusLabel = ucfirst(str_replace('-', ' ', $status));
-        $name = "$dirLabel Call - $statusLabel";
+
+        // Include names in the title
+        if ($direction === 'inbound' && !empty($callerName)) {
+            $name = "Call from $callerName - $statusLabel";
+        } elseif ($direction === 'outbound' && !empty($recipientName)) {
+            $name = "Call to $recipientName - $statusLabel";
+        } else {
+            $name = "$dirLabel Call - $statusLabel";
+        }
 
         if ($duration > 0) {
             $minutes = floor($duration / 60);
@@ -51,10 +63,18 @@ class LeadJourneyLogger
             $name .= " ({$minutes}m {$seconds}s)";
         }
 
-        // Build description
+        // Build description with names
         $description = "$dirLabel call\n";
-        $description .= "From: $from\n";
-        $description .= "To: $to\n";
+        if (!empty($callerName)) {
+            $description .= "From: $callerName ($from)\n";
+        } else {
+            $description .= "From: $from\n";
+        }
+        if (!empty($recipientName)) {
+            $description .= "To: $recipientName ($to)\n";
+        } else {
+            $description .= "To: $to\n";
+        }
         $description .= "Status: $statusLabel\n";
         $description .= "Duration: " . gmdate('H:i:s', $duration) . "\n";
 
@@ -67,6 +87,8 @@ class LeadJourneyLogger
             'call_sid' => $data['call_sid'] ?? '',
             'from' => $from,
             'to' => $to,
+            'caller_name' => $callerName,
+            'recipient_name' => $recipientName,
             'direction' => $direction,
             'status' => $status,
             'duration' => $duration
