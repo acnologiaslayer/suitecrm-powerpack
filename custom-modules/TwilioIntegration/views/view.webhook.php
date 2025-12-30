@@ -150,12 +150,13 @@ class TwilioIntegrationViewWebhook extends SugarView
      */
     private function logInboundCall($from, $to, $callSid, $status)
     {
-        $leadInfo = $this->findLeadByPhone($from);
-        
-        // Create Call record
+        $allLeads = $this->findAllLeadsByPhone($from);
+        $leadInfo = !empty($allLeads) ? $allLeads[0] : null;
+
+        // Create Call record (link to first match for legacy Call module)
         require_once('modules/Calls/Call.php');
         $call = BeanFactory::newBean('Calls');
-        
+
         $call->name = 'Inbound Call from ' . $from;
         $call->status = 'Planned'; // Will be updated by status webhook
         $call->direction = 'Inbound';
@@ -163,16 +164,16 @@ class TwilioIntegrationViewWebhook extends SugarView
         $call->duration_hours = 0;
         $call->duration_minutes = 0;
         $call->description = "Inbound call from $from to $to\nCall SID: $callSid\nInitial Status: $status";
-        
+
         if ($leadInfo) {
             $call->parent_type = $leadInfo['type'];
             $call->parent_id = $leadInfo['id'];
             $call->assigned_user_id = $leadInfo['assigned_user_id'];
             $call->name = 'Inbound Call from ' . $leadInfo['name'];
         }
-        
+
         $callId = $call->save();
-        
+
         // Log to audit
         $this->logAudit('inbound_call', array(
             'call_id' => $callId,
@@ -180,27 +181,28 @@ class TwilioIntegrationViewWebhook extends SugarView
             'from' => $from,
             'to' => $to,
             'lead_id' => $leadInfo ? $leadInfo['id'] : null,
-            'lead_type' => $leadInfo ? $leadInfo['type'] : null
+            'lead_type' => $leadInfo ? $leadInfo['type'] : null,
+            'total_matches' => count($allLeads)
         ));
 
-        // Log to LeadJourney for unified timeline
-        if ($leadInfo) {
+        // Log to LeadJourney for ALL matching leads/contacts
+        foreach ($allLeads as $match) {
             LeadJourneyLogger::logCall([
                 'call_sid' => $callSid,
                 'from' => $from,
                 'to' => $to,
-                'caller_name' => $leadInfo['name'],  // Inbound: lead is calling us
+                'caller_name' => $match['name'],  // Inbound: lead is calling us
                 'recipient_name' => '',
                 'direction' => 'inbound',
                 'status' => $status,
                 'duration' => 0, // Will be updated by status webhook
-                'parent_type' => $leadInfo['type'],
-                'parent_id' => $leadInfo['id'],
-                'assigned_user_id' => $leadInfo['assigned_user_id']
+                'parent_type' => $match['type'],
+                'parent_id' => $match['id'],
+                'assigned_user_id' => $match['assigned_user_id']
             ]);
         }
 
-        $GLOBALS['log']->info("Logged inbound call - CRM ID: $callId, SID: $callSid");
+        $GLOBALS['log']->info("Logged inbound call - CRM ID: $callId, SID: $callSid, matched " . count($allLeads) . " records");
     }
     
     /**
@@ -253,35 +255,32 @@ class TwilioIntegrationViewWebhook extends SugarView
                     'duration' => $duration
                 ));
 
-                // Update or create LeadJourney entry with final status
-                $journeyId = LeadJourneyLogger::findByCallSid($callSid);
-                if (!$journeyId && !empty($call->parent_type) && !empty($call->parent_id)) {
-                    // Get lead/contact name for the log
-                    $leadInfo = null;
-                    if ($direction === 'inbound') {
-                        $leadInfo = $this->findLeadByPhone($from);
-                    } else {
-                        $leadInfo = $this->findLeadByPhone($to);
-                    }
-                    $contactName = $leadInfo ? $leadInfo['name'] : '';
+                // Update or create LeadJourney entries for ALL matching leads/contacts
+                $externalNumber = ($direction === 'inbound') ? $from : $to;
+                $allMatches = $this->findAllLeadsByPhone($externalNumber);
 
-                    // Create journey entry if it doesn't exist (for outbound calls)
-                    LeadJourneyLogger::logCall([
-                        'call_sid' => $callSid,
-                        'from' => $from,
-                        'to' => $to,
-                        'caller_name' => ($direction === 'inbound') ? $contactName : '',
-                        'recipient_name' => ($direction !== 'inbound') ? $contactName : '',
-                        'direction' => ($direction === 'inbound') ? 'inbound' : 'outbound',
-                        'status' => $status,
-                        'duration' => intval($duration),
-                        'parent_type' => $call->parent_type,
-                        'parent_id' => $call->parent_id,
-                        'assigned_user_id' => $call->assigned_user_id
-                    ]);
+                foreach ($allMatches as $match) {
+                    // Check if entry already exists for this specific lead
+                    $existingId = LeadJourneyLogger::findByCallSidAndParent($callSid, $match['type'], $match['id']);
+                    if (!$existingId) {
+                        // Create journey entry for this lead
+                        LeadJourneyLogger::logCall([
+                            'call_sid' => $callSid,
+                            'from' => $from,
+                            'to' => $to,
+                            'caller_name' => ($direction === 'inbound') ? $match['name'] : '',
+                            'recipient_name' => ($direction !== 'inbound') ? $match['name'] : '',
+                            'direction' => ($direction === 'inbound') ? 'inbound' : 'outbound',
+                            'status' => $status,
+                            'duration' => intval($duration),
+                            'parent_type' => $match['type'],
+                            'parent_id' => $match['id'],
+                            'assigned_user_id' => $match['assigned_user_id']
+                        ]);
+                    }
                 }
 
-                $GLOBALS['log']->info("Updated call status - ID: {$row['id']}, Status: $status, Duration: $duration");
+                $GLOBALS['log']->info("Updated call status - ID: {$row['id']}, Status: $status, Duration: $duration, matched " . count($allMatches) . " records");
             }
         } else {
             // Call record not found - might be outbound initiated differently
@@ -321,54 +320,62 @@ class TwilioIntegrationViewWebhook extends SugarView
     }
     
     /**
-     * Find lead or contact by phone
+     * Find lead or contact by phone (returns first match for routing)
      */
     private function findLeadByPhone($phone)
+    {
+        $matches = $this->findAllLeadsByPhone($phone);
+        return !empty($matches) ? $matches[0] : null;
+    }
+
+    /**
+     * Find ALL leads and contacts by phone (for logging to all matching records)
+     */
+    private function findAllLeadsByPhone($phone)
     {
         $phone = preg_replace('/[^0-9]/', '', $phone);
         if (strlen($phone) > 10) {
             $phone = substr($phone, -10);
         }
-        
+
         $db = DBManagerFactory::getInstance();
-        
-        // Search Leads
-        $sql = "SELECT id, first_name, last_name, assigned_user_id FROM leads 
-                WHERE deleted = 0 
+        $matches = [];
+
+        // Search Leads (no LIMIT - get all matches)
+        $sql = "SELECT id, first_name, last_name, assigned_user_id FROM leads
+                WHERE deleted = 0
                 AND (REPLACE(REPLACE(REPLACE(REPLACE(phone_mobile, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%$phone%'
                 OR REPLACE(REPLACE(REPLACE(REPLACE(phone_work, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%$phone%'
-                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_home, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%$phone%')
-                LIMIT 1";
-        
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_home, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%$phone%')";
+
         $result = $db->query($sql);
-        if ($row = $db->fetchByAssoc($result)) {
-            return array(
+        while ($row = $db->fetchByAssoc($result)) {
+            $matches[] = array(
                 'id' => $row['id'],
                 'name' => trim($row['first_name'] . ' ' . $row['last_name']),
                 'type' => 'Leads',
                 'assigned_user_id' => $row['assigned_user_id']
             );
         }
-        
-        // Search Contacts
-        $sql = "SELECT id, first_name, last_name, assigned_user_id FROM contacts 
-                WHERE deleted = 0 
+
+        // Search Contacts (no LIMIT - get all matches)
+        $sql = "SELECT id, first_name, last_name, assigned_user_id FROM contacts
+                WHERE deleted = 0
                 AND (REPLACE(REPLACE(REPLACE(REPLACE(phone_mobile, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%$phone%'
                 OR REPLACE(REPLACE(REPLACE(REPLACE(phone_work, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%$phone%'
-                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_home, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%$phone%')
-                LIMIT 1";
-        
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_home, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%$phone%')";
+
         $result = $db->query($sql);
-        if ($row = $db->fetchByAssoc($result)) {
-            return array(
+        while ($row = $db->fetchByAssoc($result)) {
+            $matches[] = array(
                 'id' => $row['id'],
                 'name' => trim($row['first_name'] . ' ' . $row['last_name']),
                 'type' => 'Contacts',
                 'assigned_user_id' => $row['assigned_user_id']
             );
         }
-        
-        return null;
+
+        return $matches;
     }
     
     /**

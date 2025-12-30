@@ -505,4 +505,39 @@ class LeadJourneyLogger
 
         return null;
     }
+
+    /**
+     * Find existing journey entry by call SID AND specific parent record
+     * Used to check if a call has already been logged for a specific lead/contact
+     *
+     * @param string $callSid Twilio Call SID
+     * @param string $parentType Parent module type (Leads, Contacts)
+     * @param string $parentId Parent record ID
+     * @return string|null Journey entry ID or null if not found
+     */
+    public static function findByCallSidAndParent($callSid, $parentType, $parentId)
+    {
+        if (empty($callSid) || empty($parentType) || empty($parentId)) {
+            return null;
+        }
+
+        $db = DBManagerFactory::getInstance();
+        $callSidSafe = $db->quote($callSid);
+        $parentTypeSafe = $db->quote($parentType);
+        $parentIdSafe = $db->quote($parentId);
+
+        $sql = "SELECT id FROM lead_journey
+                WHERE touchpoint_data LIKE '%\"call_sid\":\"$callSidSafe\"%'
+                AND parent_type = '$parentTypeSafe'
+                AND parent_id = '$parentIdSafe'
+                AND deleted = 0
+                LIMIT 1";
+
+        $result = $db->query($sql);
+        if ($row = $db->fetchByAssoc($result)) {
+            return $row['id'];
+        }
+
+        return null;
+    }
 }

@@ -84,14 +84,6 @@ foreach ($calls as $call) {
         continue;
     }
 
-    // Check if already synced
-    $existing = LeadJourneyLogger::findByCallSid($callSid);
-    if ($existing) {
-        echo "  Skipping: Already synced\n";
-        $skipped++;
-        continue;
-    }
-
     // Determine the external number (not our Twilio number)
     $twilioNumber = $sugar_config['twilio_phone_number'] ?? '';
     $externalNumber = $from;
@@ -113,7 +105,14 @@ foreach ($calls as $call) {
         $cleanNumber = substr($cleanNumber, -10);
     }
 
-    // Find matching lead by phone
+    // Skip if phone number is too short (must be at least 7 digits)
+    if (strlen($cleanNumber) < 7) {
+        echo "  Skipping: Invalid phone number (too short)\n";
+        $skipped++;
+        continue;
+    }
+
+    // Find ALL matching leads by phone (no LIMIT - get all duplicates)
     $sql = "SELECT id, first_name, last_name
             FROM leads
             WHERE deleted = 0
@@ -121,23 +120,32 @@ foreach ($calls as $call) {
                 REPLACE(REPLACE(REPLACE(phone_mobile, '-', ''), ' ', ''), '+', '') LIKE '%$cleanNumber%'
                 OR REPLACE(REPLACE(REPLACE(phone_home, '-', ''), ' ', ''), '+', '') LIKE '%$cleanNumber%'
                 OR REPLACE(REPLACE(REPLACE(phone_work, '-', ''), ' ', ''), '+', '') LIKE '%$cleanNumber%'
-            )
-            LIMIT 1";
+            )";
 
     $result = $db->query($sql);
-    $lead = $db->fetchByAssoc($result);
 
-    if (!$lead) {
+    // Collect all matching leads
+    $matchingLeads = [];
+    while ($lead = $db->fetchByAssoc($result)) {
+        $matchingLeads[] = $lead;
+    }
+
+    if (empty($matchingLeads)) {
         echo "  No matching lead found for: $externalNumber\n";
         $skipped++;
         continue;
     }
 
-    $leadName = trim("{$lead['first_name']} {$lead['last_name']}");
-    $leadNameSafe = preg_replace('/[^a-zA-Z0-9_-]/', '_', $leadName); // Safe for filenames
-    echo "  Matched lead: $leadName ({$lead['id']})\n";
+    // Safeguard: Skip if too many matches (likely a data issue)
+    if (count($matchingLeads) > 10) {
+        echo "  Skipping: Too many matches (" . count($matchingLeads) . ") - likely data issue\n";
+        $skipped++;
+        continue;
+    }
 
-    // Check for recording
+    echo "  Found " . count($matchingLeads) . " matching lead(s)\n";
+
+    // Check for recording (only download once, shared across all leads)
     $recordingUrl = null;
     $recordingSid = null;
 
@@ -159,63 +167,79 @@ foreach ($calls as $call) {
 
         echo "  Found recording: $recordingSid (duration: {$recording['duration']}s)\n";
 
-        // Download recording
-        $mp3Url = "https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/Recordings/{$recordingSid}.mp3";
-        $ch = curl_init($mp3Url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_USERPWD => "{$accountSid}:{$authToken}",
-            CURLOPT_TIMEOUT => 300,
-            CURLOPT_FOLLOWLOCATION => true
-        ]);
-        $mp3Data = curl_exec($ch);
-        $mp3Code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        // Download recording (use timestamp + call SID for unique filename)
+        $filename = "recording_" . date('Y-m-d_His', strtotime($startTime)) . "_{$recordingSid}.mp3";
+        $filepath = $recordingsDir . '/' . $filename;
 
-        if ($mp3Code === 200 && !empty($mp3Data)) {
-            // Include lead name in filename for easy identification
-            $filename = "recording_" . date('Y-m-d_His', strtotime($startTime)) . "_{$leadNameSafe}_{$recordingSid}.mp3";
-            $filepath = $recordingsDir . '/' . $filename;
+        // Only download if not already downloaded
+        if (!file_exists($filepath)) {
+            $mp3Url = "https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/Recordings/{$recordingSid}.mp3";
+            $ch = curl_init($mp3Url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_USERPWD => "{$accountSid}:{$authToken}",
+                CURLOPT_TIMEOUT => 300,
+                CURLOPT_FOLLOWLOCATION => true
+            ]);
+            $mp3Data = curl_exec($ch);
+            $mp3Code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
 
-            if (file_put_contents($filepath, $mp3Data)) {
-                echo "  Downloaded recording: $filename (" . strlen($mp3Data) . " bytes)\n";
-                $recordingUrl = "index.php?module=TwilioIntegration&action=recording&file=" . urlencode($filename);
-                $recordingsDownloaded++;
+            if ($mp3Code === 200 && !empty($mp3Data)) {
+                if (file_put_contents($filepath, $mp3Data)) {
+                    echo "  Downloaded recording: $filename (" . strlen($mp3Data) . " bytes)\n";
+                    $recordingsDownloaded++;
+                }
             }
+        } else {
+            echo "  Recording already exists: $filename\n";
         }
+
+        $recordingUrl = "index.php?module=TwilioIntegration&action=recording&file=" . urlencode($filename);
     }
 
-    // Create LeadJourney entry
+    // Create LeadJourney entry for EACH matching lead
     $callDirection = (strpos($direction, 'outbound') !== false) ? 'outbound' : 'inbound';
 
-    // Determine caller/recipient names based on direction
-    $callerName = '';
-    $recipientName = '';
-    if ($callDirection === 'inbound') {
-        $callerName = $leadName;  // Lead is calling us
-    } else {
-        $recipientName = $leadName;  // We are calling the lead
-    }
+    foreach ($matchingLeads as $lead) {
+        $leadName = trim("{$lead['first_name']} {$lead['last_name']}");
 
-    $journeyId = LeadJourneyLogger::logCall([
-        'call_sid' => $callSid,
-        'from' => $from,
-        'to' => $to,
-        'caller_name' => $callerName,
-        'recipient_name' => $recipientName,
-        'direction' => $callDirection,
-        'status' => $status,
-        'duration' => $duration,
-        'recording_url' => $recordingUrl,
-        'recording_sid' => $recordingSid,
-        'parent_type' => 'Leads',
-        'parent_id' => $lead['id'],
-        'date' => date('Y-m-d H:i:s', strtotime($startTime))
-    ]);
+        // Check if already synced for this specific lead
+        $existing = LeadJourneyLogger::findByCallSidAndParent($callSid, 'Leads', $lead['id']);
+        if ($existing) {
+            echo "    Skipping {$leadName}: Already synced\n";
+            continue;
+        }
 
-    if ($journeyId) {
-        echo "  Created journey entry: $journeyId\n";
-        $synced++;
+        // Determine caller/recipient names based on direction
+        $callerName = '';
+        $recipientName = '';
+        if ($callDirection === 'inbound') {
+            $callerName = $leadName;  // Lead is calling us
+        } else {
+            $recipientName = $leadName;  // We are calling the lead
+        }
+
+        $journeyId = LeadJourneyLogger::logCall([
+            'call_sid' => $callSid,
+            'from' => $from,
+            'to' => $to,
+            'caller_name' => $callerName,
+            'recipient_name' => $recipientName,
+            'direction' => $callDirection,
+            'status' => $status,
+            'duration' => $duration,
+            'recording_url' => $recordingUrl,
+            'recording_sid' => $recordingSid,
+            'parent_type' => 'Leads',
+            'parent_id' => $lead['id'],
+            'date' => date('Y-m-d H:i:s', strtotime($startTime))
+        ]);
+
+        if ($journeyId) {
+            echo "    Created journey entry for {$leadName}: $journeyId\n";
+            $synced++;
+        }
     }
 
     echo "\n";
