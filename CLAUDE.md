@@ -4,7 +4,7 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v2.5.28
+**Current Version**: v3.1.14
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
 
 This is a Docker-based SuiteCRM extension with eight custom modules for sales operations:
@@ -435,6 +435,16 @@ docker push mahir009/suitecrm-powerpack:latest
 
 ## Version History (Recent)
 
+- **v3.1.14** - Fix Twilio call direction detection for browser outgoing calls:
+  - Fixed bug where browser outgoing calls were incorrectly detected as incoming
+  - Twilio marks browser-to-TwiML-App calls as Direction=inbound
+  - Detection now checks From field FIRST (client:xxx = outgoing, phone = incoming)
+  - Fixes "Bad data passed in" error and empty To number issues
+- **v3.1.13** - Messenger-style compose bar in timeline modal
+- **v3.1.12** - Add communication action buttons (Call, SMS, Email) to timeline
+- **v3.1.11** - Unified timeline with SMS, calls, and emails from all sources
+- **v3.1.10** - Log calls to ALL matching leads with same phone number
+- **v3.1.9** - Include caller/recipient names in call logs and recordings
 - **v2.5.28** - Fix production upgrade issues:
   - Fix JS files copied to wrong location (now `/bitnami/suitecrm/public/dist/`)
   - Fix module path check in install-modules.sh (checks image source first)
