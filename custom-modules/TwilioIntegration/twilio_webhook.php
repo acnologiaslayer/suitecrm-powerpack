@@ -9,6 +9,10 @@
  *   Status:    https://yourdomain.com/legacy/twilio_webhook.php?action=status
  */
 
+// START OUTPUT BUFFERING IMMEDIATELY - SuiteCRM's entryPoint may output content
+// We'll discard all output and only send clean TwiML/JSON responses
+ob_start();
+
 // Prevent CLI execution
 if (php_sapi_name() === 'cli') {
     die('CLI not supported');
@@ -22,6 +26,7 @@ if (!file_exists($legacyRoot . '/config.php')) {
     $legacyRoot = dirname(__FILE__) . '/../../..';
 }
 if (!file_exists($legacyRoot . '/config.php')) {
+    while (ob_get_level()) { ob_end_clean(); }
     header('HTTP/1.1 500 Internal Server Error');
     header('Content-Type: application/xml');
     echo '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Configuration error</Say><Hangup/></Response>';
@@ -48,6 +53,10 @@ set_error_handler(function($errno, $errstr, $errfile, $errline) {
 
 set_exception_handler(function($exception) {
     $GLOBALS['log']->error("Twilio Webhook Exception: " . $exception->getMessage());
+    // Clear ALL output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Content-Type: application/xml');
     echo '<?xml version="1.0" encoding="UTF-8"?>';
     echo '<Response><Say voice="Polly.Joanna">An error occurred. Please try again.</Say><Hangup/></Response>';
@@ -86,6 +95,7 @@ switch ($action) {
         handleSms();
         break;
     default:
+        while (ob_get_level()) { ob_end_clean(); }
         header('Content-Type: application/xml');
         echo '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Unknown action</Say><Hangup/></Response>';
 }
