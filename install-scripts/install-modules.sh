@@ -125,10 +125,10 @@ mkdir -p /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/EntryP
 mkdir -p /bitnami/suitecrm/public/legacy/custom/application/Ext/EntryPointRegistry
 
 # Create the entry point registry file
+# Note: Do NOT include sugarEntry check in extension files - they are loaded by SuiteCRM
 cat > /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/EntryPointRegistry/sms_webhook.php << 'PHPEOF'
 <?php
-// SMS Webhook Entry Point Registration
-if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
+// SMS Webhook Entry Point Registration for Twilio
 $entry_point_registry['sms_webhook'] = array(
     'file' => 'modules/TwilioIntegration/sms_entry_point.php',
     'auth' => false

@@ -1,9 +1,12 @@
 <?php
 /**
  * SMS Webhook Entry Point
- * Handles inbound SMS from Twilio and logs to lead_journey
+ * Handles inbound SMS from Twilio and status callbacks
  *
  * Twilio Webhook URL: https://domain.com/legacy/index.php?entryPoint=sms_webhook
+ *
+ * This entry point delegates to the handleSms() function in twilio_webhook.php
+ * to ensure consistent behavior and avoid code duplication.
  */
 
 if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
@@ -13,6 +16,8 @@ while (ob_get_level()) {
     ob_end_clean();
 }
 
+$GLOBALS['log']->info("SMS Entry Point - Request received: " . json_encode($_REQUEST));
+
 // Get request parameters
 $from = $_REQUEST['From'] ?? '';
 $to = $_REQUEST['To'] ?? '';
@@ -20,26 +25,26 @@ $body = $_REQUEST['Body'] ?? '';
 $messageSid = $_REQUEST['MessageSid'] ?? '';
 $messageStatus = $_REQUEST['MessageStatus'] ?? '';
 $numMedia = isset($_REQUEST['NumMedia']) ? intval($_REQUEST['NumMedia']) : 0;
-$smsAction = $_REQUEST['sms_action'] ?? 'inbound';
 
-$GLOBALS['log']->info("SMS Entry Point - Action: $smsAction, From: $from, To: $to, SID: $messageSid");
-
-// Handle different actions
-if ($smsAction === 'status' || !empty($messageStatus)) {
-    // Status callback - just acknowledge
+// Handle status callbacks (delivery status, etc.)
+if (!empty($messageStatus)) {
+    $GLOBALS['log']->info("SMS Entry Point - Status callback: $messageStatus for SID: $messageSid");
     header('Content-Type: application/xml');
     echo '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
     exit;
 }
 
 // Handle inbound SMS
+$GLOBALS['log']->info("SMS Entry Point - Inbound SMS from: $from, to: $to, body: " . substr($body, 0, 50));
+
+// Get database instance
 $db = DBManagerFactory::getInstance();
 
 // Clean phone number for lookup
 $cleanFrom = preg_replace('/[^0-9]/', '', $from);
 $last10 = substr($cleanFrom, -10);
 
-// Find lead by phone number
+// Find lead by phone number (check all phone fields)
 $leadInfo = null;
 if (strlen($last10) >= 7) {
     $sql = "SELECT id, first_name, last_name, assigned_user_id, funnel_type_c
@@ -54,15 +59,17 @@ if (strlen($last10) >= 7) {
             LIMIT 1";
 
     $result = $db->query($sql);
-    $row = $db->fetchByAssoc($result);
-
-    if ($row) {
-        $leadInfo = [
-            'id' => $row['id'],
-            'name' => trim($row['first_name'] . ' ' . $row['last_name']),
-            'assigned_user_id' => $row['assigned_user_id'],
-            'funnel_type' => $row['funnel_type_c'] ?? ''
-        ];
+    if ($result) {
+        $row = $db->fetchByAssoc($result);
+        if ($row) {
+            $leadInfo = [
+                'id' => $row['id'],
+                'name' => trim($row['first_name'] . ' ' . $row['last_name']),
+                'assigned_user_id' => $row['assigned_user_id'],
+                'funnel_type' => $row['funnel_type_c'] ?? ''
+            ];
+            $GLOBALS['log']->info("SMS Entry Point - Found lead: " . $leadInfo['id'] . " - " . $leadInfo['name']);
+        }
     }
 }
 
@@ -70,16 +77,28 @@ if (strlen($last10) >= 7) {
 $cleanTo = preg_replace('/[^0-9]/', '', $to);
 $toLast10 = substr($cleanTo, -10);
 
+$assignedUserId = '1'; // Default to admin
 $sql = "SELECT assigned_user_id FROM twilio_integration
         WHERE deleted = 0
         AND REPLACE(REPLACE(REPLACE(phone_number, '-', ''), ' ', ''), '+', '') LIKE '%" . $db->quote($toLast10) . "%'
         LIMIT 1";
 $result = $db->query($sql);
-$twilioRow = $db->fetchByAssoc($result);
-$assignedUserId = $twilioRow['assigned_user_id'] ?? ($leadInfo['assigned_user_id'] ?? '1');
+if ($result) {
+    $twilioRow = $db->fetchByAssoc($result);
+    if ($twilioRow && !empty($twilioRow['assigned_user_id'])) {
+        $assignedUserId = $twilioRow['assigned_user_id'];
+        $GLOBALS['log']->info("SMS Entry Point - Found assigned user: $assignedUserId for phone: $to");
+    }
+}
+
+// Use lead's assigned user if we found a lead and no twilio user
+if ($leadInfo && $assignedUserId === '1' && !empty($leadInfo['assigned_user_id'])) {
+    $assignedUserId = $leadInfo['assigned_user_id'];
+}
 
 // Log to lead_journey if we found a lead
 if ($leadInfo) {
+    // Generate GUID for the journey entry
     $journeyId = create_guid();
     $callerName = $leadInfo['name'] ?: 'Unknown';
     $threadId = 'sms_' . $cleanFrom;
@@ -128,6 +147,36 @@ if ($leadInfo) {
         $GLOBALS['log']->info("SMS Entry Point - Logged inbound SMS to lead_journey for lead: " . $leadInfo['id']);
     } catch (Exception $e) {
         $GLOBALS['log']->error("SMS Entry Point - Failed to log SMS: " . $e->getMessage());
+    }
+
+    // Also send a WebSocket notification to the assigned user
+    try {
+        $notificationPayload = json_encode([
+            'event' => 'sms_inbound',
+            'user_id' => $assignedUserId,
+            'lead_id' => $leadInfo['id'],
+            'lead_name' => $leadInfo['name'],
+            'from' => $from,
+            'body' => $body,
+            'message_sid' => $messageSid,
+            'timestamp' => date('c')
+        ]);
+
+        // Queue notification for WebSocket delivery
+        $notifId = create_guid();
+        $sql = "INSERT INTO notification_queue (id, user_id, notification_type, payload, status, created_at)
+                VALUES (
+                    '" . $db->quote($notifId) . "',
+                    '" . $db->quote($assignedUserId) . "',
+                    'sms_inbound',
+                    '" . $db->quote($notificationPayload) . "',
+                    'pending',
+                    NOW()
+                )";
+        $db->query($sql);
+        $GLOBALS['log']->info("SMS Entry Point - Queued notification for user: $assignedUserId");
+    } catch (Exception $e) {
+        $GLOBALS['log']->error("SMS Entry Point - Failed to queue notification: " . $e->getMessage());
     }
 } else {
     $GLOBALS['log']->info("SMS Entry Point - No matching lead found for phone: $from");
