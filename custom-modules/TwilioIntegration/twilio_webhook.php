@@ -96,6 +96,10 @@ exit;
 // ============================================================================
 
 function handleTwiml($dialAction) {
+    // Clear any output buffers to ensure clean TwiML
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Content-Type: application/xml');
 
     // IMPORTANT: Use $_GET for our URL params, $_POST for Twilio's params
@@ -130,6 +134,11 @@ function handleTwiml($dialAction) {
 }
 
 function handleRecording() {
+    // Clear any output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+
     $recordingSid = $_REQUEST['RecordingSid'] ?? '';
     $callSid = $_REQUEST['CallSid'] ?? '';
     $recordingUrl = $_REQUEST['RecordingUrl'] ?? '';
@@ -157,6 +166,11 @@ function handleRecording() {
 }
 
 function handleStatus() {
+    // Clear any output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+
     $callSid = $_REQUEST['CallSid'] ?? '';
     $callStatus = $_REQUEST['CallStatus'] ?? '';
     $duration = $_REQUEST['CallDuration'] ?? '0';
@@ -168,6 +182,11 @@ function handleStatus() {
 }
 
 function handleSms() {
+    // Clear any output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+
     $from = $_REQUEST['From'] ?? '';
     $body = $_REQUEST['Body'] ?? '';
 
@@ -183,6 +202,10 @@ function handleSms() {
  * It dials all users assigned to that number via browser (Twilio Client)
  */
 function handleIncomingCall() {
+    // Clear any output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Content-Type: application/xml');
 
     $calledNumber = $_REQUEST['To'] ?? '';     // The Twilio number that was called
@@ -314,6 +337,10 @@ function logIncomingCall($callSid, $callerNumber, $calledNumber, $assignedUsers)
  * Returns Lead or Contact info if found
  */
 function handleCallerLookup() {
+    // Clear any output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Content-Type: application/json');
     header('Cache-Control: no-cache');
 
@@ -447,6 +474,10 @@ function lookupCallerByPhone($phone) {
  * Generate access token for Twilio Client SDK
  */
 function handleGetToken() {
+    // Clear any output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Content-Type: application/json');
     header('Cache-Control: no-cache');
 
