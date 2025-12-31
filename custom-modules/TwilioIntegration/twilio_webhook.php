@@ -40,6 +40,20 @@ $dialAction = isset($_REQUEST['dial_action']) ? $_REQUEST['dial_action'] : 'outb
 
 $GLOBALS['log']->info("Twilio Webhook - Action: $action, DialAction: $dialAction, Method: " . $_SERVER['REQUEST_METHOD']);
 
+// Set up error handler to return TwiML on errors
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    $GLOBALS['log']->error("Twilio Webhook Error: $errstr in $errfile:$errline");
+    return false; // Continue with normal error handling
+});
+
+set_exception_handler(function($exception) {
+    $GLOBALS['log']->error("Twilio Webhook Exception: " . $exception->getMessage());
+    header('Content-Type: application/xml');
+    echo '<?xml version="1.0" encoding="UTF-8"?>';
+    echo '<Response><Say voice="Polly.Joanna">An error occurred. Please try again.</Say><Hangup/></Response>';
+    exit;
+});
+
 // Route to handler
 switch ($action) {
     case 'twiml':
@@ -536,6 +550,10 @@ function base64UrlEncode($data) {
  * - Outgoing calls: From is a client identity (client:agent_xxx), To is the destination number
  */
 function handleVoiceCall() {
+    // Clear any output buffers to ensure clean TwiML
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Content-Type: application/xml');
 
     // Log all incoming parameters for debugging
@@ -557,32 +575,30 @@ function handleVoiceCall() {
     $GLOBALS['log']->info("Voice Call - Direction: '$direction', To: '$to', From: '$from', CallSid: '$callSid'");
 
     // Determine if this is an incoming or outgoing call
-    // Method 1: Check Direction parameter (most reliable when available)
-    // Method 2: Check if From starts with 'client:' (outgoing from browser)
-    // Method 3: Check if From contains 'agent_' (another format for client identity)
+    // IMPORTANT: Direction=inbound from Twilio means "inbound to TwiML App" NOT "incoming to user"
+    // - Browser outgoing call: From=client:xxx, Direction=inbound (to TwiML App)
+    // - External incoming call: From=+1xxx (phone number), Direction=inbound
 
     $isIncoming = false;
     $detectionMethod = 'unknown';
 
-    if ($direction === 'inbound') {
-        $isIncoming = true;
-        $detectionMethod = 'Direction=inbound';
-    } elseif (strpos($from, 'client:') === 0) {
-        // From browser client - this is an outgoing call (format: client:agent_xxx or client:user_xxx)
+    // FIRST: Check if From is a browser client - this is ALWAYS an outgoing call
+    if (strpos($from, 'client:') === 0) {
+        // From browser client - this is an OUTGOING call (browser -> phone)
         $isIncoming = false;
-        $detectionMethod = 'From starts with client:';
+        $detectionMethod = 'From starts with client: (browser outgoing)';
     } elseif (strpos($from, 'agent_') !== false || strpos($from, 'user_') !== false) {
-        // Alternative format for browser client identity (agent_xxx or user_xxx)
+        // Alternative format for browser client identity
         $isIncoming = false;
-        $detectionMethod = 'From contains agent_ or user_';
+        $detectionMethod = 'From contains agent_/user_ (browser outgoing)';
+    } elseif (!empty($from) && isPhoneNumber($from)) {
+        // From is a regular phone number - this is an INCOMING call (phone -> browser)
+        $isIncoming = true;
+        $detectionMethod = 'From is phone number (external incoming)';
     } elseif (!empty($to) && isOurTwilioNumber($to)) {
         // To is one of our Twilio numbers - this is incoming
         $isIncoming = true;
         $detectionMethod = 'To is our Twilio number';
-    } elseif (!empty($from) && isPhoneNumber($from)) {
-        // From is a regular phone number calling us
-        $isIncoming = true;
-        $detectionMethod = 'From is phone number';
     } else {
         // Default to outgoing if we can't determine
         $isIncoming = false;
