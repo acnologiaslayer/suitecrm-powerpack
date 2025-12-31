@@ -138,8 +138,14 @@ function handleTwiml($dialAction) {
 
     $GLOBALS['log']->info("TwiML - DialAction: $dialAction, To: $to, From: $from, GET_to: " . ($_GET['to'] ?? 'none') . ", POST_To: " . ($_POST['To'] ?? 'none'));
 
-    // Get Twilio config
-    $config = getTwilioConfig();
+    // Extract user ID from the From parameter if it's a client identity
+    $userId = null;
+    if (preg_match('/agent_([a-f0-9\-]+)/i', $from, $matches)) {
+        $userId = $matches[1];
+    }
+
+    // Get Twilio config (use user-specific config if available)
+    $config = getTwilioConfig($userId);
     $baseUrl = getWebhookBaseUrl();
 
     switch ($dialAction) {
@@ -1018,14 +1024,23 @@ function handleIncomingVoiceCall($calledNumber, $callerNumber, $callSid) {
 function handleOutgoingVoiceCall($to, $from) {
     $GLOBALS['log']->info("Outgoing Voice Call - Raw To: $to, From: $from");
 
+    // Extract user ID from the From parameter (client:agent_{userId})
+    $userId = null;
+    if (preg_match('/agent_([a-f0-9\-]+)/i', $from, $matches)) {
+        $userId = $matches[1];
+        $GLOBALS['log']->info("Outgoing Voice Call - Extracted user ID: $userId");
+    }
+
     // Get CallerId from request or use config
     $callerId = $_REQUEST['CallerId'] ?? '';
 
-    // Get Twilio config for caller ID
-    $config = getTwilioConfig();
+    // Get Twilio config for this user's caller ID
+    $config = getTwilioConfig($userId);
     if (empty($callerId)) {
         $callerId = $config['phone_number'] ?? '';
     }
+
+    $GLOBALS['log']->info("Outgoing Voice Call - Using caller ID: $callerId from config");
 
     $baseUrl = getWebhookBaseUrl();
     $statusUrl = $baseUrl . '?action=status';
@@ -1135,13 +1150,74 @@ function outputInbound($from, $config, $baseUrl) {
 // Helper Functions
 // ============================================================================
 
-function getTwilioConfig() {
-    global $sugar_config;
+function getTwilioConfig($userId = null) {
+    global $sugar_config, $current_user;
+
+    // Determine which user to get config for
+    if (empty($userId) && !empty($current_user->id)) {
+        $userId = $current_user->id;
+    }
+
+    // Try to get config from twilio_integration table for this user
+    if (!empty($userId)) {
+        $db = $GLOBALS['db'];
+        $sql = "SELECT account_sid, auth_token, phone_number
+                FROM twilio_integration
+                WHERE deleted = 0
+                AND assigned_user_id = '" . $db->quote($userId) . "'
+                ORDER BY date_modified DESC
+                LIMIT 1";
+
+        $result = $db->query($sql);
+        $row = $db->fetchByAssoc($result);
+
+        if ($row && !empty($row['account_sid']) && !empty($row['phone_number'])) {
+            $GLOBALS['log']->info("Twilio Config - Using user config for user $userId: " . $row['phone_number']);
+            return [
+                'account_sid' => $row['account_sid'],
+                'auth_token' => $row['auth_token'],
+                'phone_number' => $row['phone_number'],
+            ];
+        }
+    }
+
+    // Fall back to environment variables / sugar_config
+    $GLOBALS['log']->info("Twilio Config - Using default config from env/config");
     return [
         'account_sid' => getenv('TWILIO_ACCOUNT_SID') ?: ($sugar_config['twilio_account_sid'] ?? ''),
         'auth_token' => getenv('TWILIO_AUTH_TOKEN') ?: ($sugar_config['twilio_auth_token'] ?? ''),
         'phone_number' => getenv('TWILIO_PHONE_NUMBER') ?: ($sugar_config['twilio_phone_number'] ?? ''),
     ];
+}
+
+/**
+ * Get Twilio config for a specific phone number (for incoming calls/SMS)
+ */
+function getTwilioConfigByPhone($phoneNumber) {
+    $db = $GLOBALS['db'];
+    $cleanPhone = preg_replace('/[^0-9]/', '', $phoneNumber);
+    $last10 = substr($cleanPhone, -10);
+
+    $sql = "SELECT account_sid, auth_token, phone_number
+            FROM twilio_integration
+            WHERE deleted = 0
+            AND REPLACE(REPLACE(REPLACE(phone_number, '-', ''), ' ', ''), '+', '') LIKE '%" . $db->quote($last10) . "%'
+            ORDER BY date_modified DESC
+            LIMIT 1";
+
+    $result = $db->query($sql);
+    $row = $db->fetchByAssoc($result);
+
+    if ($row && !empty($row['account_sid'])) {
+        return [
+            'account_sid' => $row['account_sid'],
+            'auth_token' => $row['auth_token'],
+            'phone_number' => $row['phone_number'],
+        ];
+    }
+
+    // Fall back to default config
+    return getTwilioConfig();
 }
 
 function getWebhookBaseUrl() {

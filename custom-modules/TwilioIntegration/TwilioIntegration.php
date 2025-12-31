@@ -117,10 +117,44 @@ class TwilioIntegration extends Basic {
     
     /**
      * Get configuration settings
+     * @param string|null $userId Optional user ID to get config for
      */
-    public static function getConfig() {
-        global $sugar_config;
-        
+    public static function getConfig($userId = null) {
+        global $sugar_config, $current_user;
+
+        // Determine which user to get config for
+        if (empty($userId) && !empty($current_user->id)) {
+            $userId = $current_user->id;
+        }
+
+        // Try to get config from twilio_integration table for this user
+        if (!empty($userId)) {
+            $db = DBManagerFactory::getInstance();
+            $sql = "SELECT account_sid, auth_token, phone_number
+                    FROM twilio_integration
+                    WHERE deleted = 0
+                    AND assigned_user_id = '" . $db->quote($userId) . "'
+                    ORDER BY date_modified DESC
+                    LIMIT 1";
+
+            $result = $db->query($sql);
+            $row = $db->fetchByAssoc($result);
+
+            if ($row && !empty($row['account_sid']) && !empty($row['phone_number'])) {
+                $GLOBALS['log']->info("TwilioIntegration::getConfig - Using user config for user $userId: " . $row['phone_number']);
+                return array(
+                    'account_sid' => $row['account_sid'],
+                    'auth_token' => $row['auth_token'],
+                    'phone_number' => $row['phone_number'],
+                    'enable_click_to_call' => $sugar_config['twilio_enable_click_to_call'] ?? true,
+                    'enable_auto_logging' => $sugar_config['twilio_enable_auto_logging'] ?? true,
+                    'enable_recordings' => $sugar_config['twilio_enable_recordings'] ?? true,
+                );
+            }
+        }
+
+        // Fall back to environment variables / sugar_config
+        $GLOBALS['log']->info("TwilioIntegration::getConfig - Using default config from env/config");
         return array(
             'account_sid' => getenv('TWILIO_ACCOUNT_SID') ?: ($sugar_config['twilio_account_sid'] ?? ''),
             'auth_token' => getenv('TWILIO_AUTH_TOKEN') ?: ($sugar_config['twilio_auth_token'] ?? ''),
