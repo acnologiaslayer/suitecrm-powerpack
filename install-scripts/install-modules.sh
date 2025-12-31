@@ -119,33 +119,10 @@ elif [ -f "/bitnami/suitecrm/custom/Extension/application/Ext/ActionDefs/PowerPa
     cp /bitnami/suitecrm/custom/Extension/application/Ext/ActionDefs/PowerPackActions.php /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/ActionDefs/
 fi
 
-# Create EntryPointRegistry for SMS webhook
-echo "Registering SMS webhook entry point..."
-mkdir -p /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/EntryPointRegistry
-mkdir -p /bitnami/suitecrm/public/legacy/custom/application/Ext/EntryPointRegistry
-
-# Create the entry point registry file
-# Note: Do NOT include sugarEntry check in extension files - they are loaded by SuiteCRM
-cat > /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/EntryPointRegistry/sms_webhook.php << 'PHPEOF'
-<?php
-// SMS Webhook Entry Point Registration for Twilio
-$entry_point_registry['sms_webhook'] = array(
-    'file' => 'modules/TwilioIntegration/sms_entry_point.php',
-    'auth' => false
-);
-PHPEOF
-
-# Also create the compiled version
-cat > /bitnami/suitecrm/public/legacy/custom/application/Ext/EntryPointRegistry/entry_point_registry.ext.php << 'PHPEOF'
-<?php
-// PowerPack Entry Point Registry - Compiled
-$entry_point_registry['sms_webhook'] = array(
-    'file' => 'modules/TwilioIntegration/sms_entry_point.php',
-    'auth' => false
-);
-PHPEOF
-
-echo "SMS webhook entry point registered"
+# SMS Webhook is now handled directly via twilio_webhook.php?action=sms
+# No entry point registration needed - Twilio should use the direct URL:
+# https://domain.com/legacy/modules/TwilioIntegration/twilio_webhook.php?action=sms
+echo "SMS webhook available at: modules/TwilioIntegration/twilio_webhook.php?action=sms"
 
 # Create compiled language extension for dropdown lists
 # Note: This OVERWRITES the file to prevent duplicate die() statements from compiled extensions

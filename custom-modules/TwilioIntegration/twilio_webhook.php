@@ -19,11 +19,16 @@ if (php_sapi_name() === 'cli') {
 }
 
 // Change to SuiteCRM legacy root
-// File is at /bitnami/suitecrm/public/legacy/twilio_webhook.php
+// File can be at /bitnami/suitecrm/public/legacy/twilio_webhook.php (root)
+// or at /bitnami/suitecrm/public/legacy/modules/TwilioIntegration/twilio_webhook.php (module)
 $legacyRoot = dirname(__FILE__);
 if (!file_exists($legacyRoot . '/config.php')) {
-    // Fallback: try if we're in modules subdirectory
-    $legacyRoot = dirname(__FILE__) . '/../../..';
+    // Fallback: try if we're in modules/TwilioIntegration subdirectory (2 levels up)
+    $legacyRoot = dirname(__FILE__, 3); // Go up 3 levels: TwilioIntegration -> modules -> legacy
+}
+if (!file_exists($legacyRoot . '/config.php')) {
+    // Try alternate: maybe 2 levels up
+    $legacyRoot = dirname(__FILE__, 2);
 }
 if (!file_exists($legacyRoot . '/config.php')) {
     while (ob_get_level()) { ob_end_clean(); }
