@@ -46,8 +46,9 @@ switch ($action) {
         handleTwiml($dialAction);
         break;
     case 'voice':
-        // Handle Twilio Client SDK outbound calls (TwiML App Voice URL)
-        handleBrowserCall();
+        // Handle Twilio Voice calls (TwiML App Voice URL)
+        // This handles BOTH outgoing browser calls AND incoming calls to the Twilio number
+        handleVoiceCall();
         break;
     case 'token':
         // Generate access token for Twilio Client SDK
@@ -527,18 +528,154 @@ function base64UrlEncode($data) {
 }
 
 /**
- * Handle browser-originated calls from Twilio Client SDK
- * This is called when a call is made via device.connect() in the browser
+ * Handle all voice calls - both incoming and outgoing
+ * This is the unified TwiML App Voice URL handler
+ *
+ * Detection logic:
+ * - Incoming calls: From is a phone number (external caller), To is the Twilio number
+ * - Outgoing calls: From is a client identity (client:agent_xxx), To is the destination number
  */
-function handleBrowserCall() {
+function handleVoiceCall() {
     header('Content-Type: application/xml');
 
-    // Get parameters passed from Twilio Client SDK
     $to = $_REQUEST['To'] ?? '';
-    $callerId = $_REQUEST['CallerId'] ?? $_REQUEST['From'] ?? '';
-    $from = $_REQUEST['From'] ?? ''; // This is the client identity
+    $from = $_REQUEST['From'] ?? '';
+    $direction = $_REQUEST['Direction'] ?? '';
+    $callSid = $_REQUEST['CallSid'] ?? '';
 
-    $GLOBALS['log']->info("Browser Call - To: $to, CallerId: $callerId, From: $from");
+    $GLOBALS['log']->info("Voice Call - Direction: $direction, To: $to, From: $from, CallSid: $callSid");
+
+    // Determine if this is an incoming or outgoing call
+    // Method 1: Check Direction parameter (most reliable when available)
+    // Method 2: Check if From starts with 'client:' (outgoing from browser)
+    // Method 3: Check if To matches our Twilio numbers (incoming)
+
+    $isIncoming = false;
+
+    if ($direction === 'inbound') {
+        $isIncoming = true;
+    } elseif (strpos($from, 'client:') === 0) {
+        // From browser client - this is an outgoing call
+        $isIncoming = false;
+    } else {
+        // From is a phone number - check if To is one of our Twilio numbers
+        $isIncoming = isOurTwilioNumber($to);
+    }
+
+    $GLOBALS['log']->info("Voice Call - Detected as " . ($isIncoming ? "INCOMING" : "OUTGOING"));
+
+    if ($isIncoming) {
+        // Handle incoming call - route to browser clients
+        handleIncomingVoiceCall($to, $from, $callSid);
+    } else {
+        // Handle outgoing call from browser
+        handleOutgoingVoiceCall($to, $from);
+    }
+}
+
+/**
+ * Check if a phone number is one of our configured Twilio numbers
+ */
+function isOurTwilioNumber($phoneNumber) {
+    $db = $GLOBALS['db'];
+    $cleanPhone = preg_replace('/[^0-9]/', '', $phoneNumber);
+    $last10 = substr($cleanPhone, -10);
+
+    if (strlen($last10) < 10) {
+        return false;
+    }
+
+    // Check in twilio_integration table
+    $sql = "SELECT COUNT(*) as cnt FROM twilio_integration
+            WHERE deleted = 0
+            AND REPLACE(REPLACE(REPLACE(phone_number, '-', ''), ' ', ''), '+', '') LIKE '%" . $db->quote($last10) . "%'";
+
+    $result = $db->query($sql);
+    $row = $db->fetchByAssoc($result);
+
+    if ($row && intval($row['cnt']) > 0) {
+        return true;
+    }
+
+    // Also check environment/config Twilio number
+    $config = getTwilioConfig();
+    if (!empty($config['phone_number'])) {
+        $configPhone = preg_replace('/[^0-9]/', '', $config['phone_number']);
+        if (substr($configPhone, -10) === $last10) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Handle incoming voice call - route to browser clients
+ */
+function handleIncomingVoiceCall($calledNumber, $callerNumber, $callSid) {
+    $GLOBALS['log']->info("Incoming Voice Call - To: $calledNumber, From: $callerNumber, CallSid: $callSid");
+
+    // Clean the called number for lookup
+    $cleanCalledNumber = cleanPhone($calledNumber);
+
+    // Find all users assigned to this phone number in twilio_integration table
+    $assignedUsers = getUsersForPhoneNumber($cleanCalledNumber);
+
+    $GLOBALS['log']->info("Incoming Voice Call - Found " . count($assignedUsers) . " users for number $cleanCalledNumber");
+
+    $baseUrl = getWebhookBaseUrl();
+    $voicemailUrl = $baseUrl . '?action=twiml&dial_action=voicemail&from=' . urlencode($callerNumber);
+    $statusUrl = $baseUrl . '?action=status';
+
+    echo '<?xml version="1.0" encoding="UTF-8"?>';
+    echo '<Response>';
+
+    if (!empty($assignedUsers)) {
+        // Dial all assigned browser clients simultaneously
+        // First one to answer gets the call
+        echo '<Dial timeout="30" action="' . h($voicemailUrl) . '" method="POST">';
+
+        foreach ($assignedUsers as $userId) {
+            // Client identity must match what's used in token generation
+            $clientIdentity = 'agent_' . $userId;
+            echo '<Client>' . h($clientIdentity) . '</Client>';
+            $GLOBALS['log']->info("Incoming Voice Call - Dialing client: $clientIdentity");
+        }
+
+        echo '</Dial>';
+    } else {
+        // No users assigned to this number, try fallback phone or go to voicemail
+        $fallbackPhone = $GLOBALS['sugar_config']['twilio_fallback_phone'] ?? '';
+
+        if ($fallbackPhone) {
+            $GLOBALS['log']->info("Incoming Voice Call - No users found, trying fallback: $fallbackPhone");
+            echo '<Say voice="Polly.Joanna">Please hold while we connect your call.</Say>';
+            echo '<Dial timeout="20" action="' . h($voicemailUrl) . '" method="POST">';
+            echo '<Number>' . h(cleanPhone($fallbackPhone)) . '</Number>';
+            echo '</Dial>';
+        } else {
+            $GLOBALS['log']->info("Incoming Voice Call - No users or fallback, going to voicemail");
+            echo '<Say voice="Polly.Joanna">Thank you for calling. Please leave a message after the tone.</Say>';
+            echo '<Record maxLength="120" playBeep="true" action="' . h($baseUrl . '?action=twiml&dial_action=recording&from=' . urlencode($callerNumber)) . '"/>';
+            echo '<Say voice="Polly.Joanna">Goodbye.</Say>';
+            echo '<Hangup/>';
+        }
+    }
+
+    echo '</Response>';
+
+    // Log the incoming call to audit
+    logIncomingCall($callSid, $callerNumber, $calledNumber, $assignedUsers);
+}
+
+/**
+ * Handle outgoing voice call from browser client
+ */
+function handleOutgoingVoiceCall($to, $from) {
+    $GLOBALS['log']->info("Outgoing Voice Call - To: $to, From: $from");
+
+    // Get CallerId from request or use config
+    $callerId = $_REQUEST['CallerId'] ?? '';
 
     // Clean and format the destination number
     $to = cleanPhone($to);
@@ -549,13 +686,16 @@ function handleBrowserCall() {
         $callerId = $config['phone_number'] ?? '';
     }
 
+    $baseUrl = getWebhookBaseUrl();
+    $statusUrl = $baseUrl . '?action=status';
+
     echo '<?xml version="1.0" encoding="UTF-8"?>';
     echo '<Response>';
 
     if (!empty($to)) {
         // Dial the destination number
         // The browser (Twilio Client) is already connected, this connects to the recipient
-        echo '<Dial callerId="' . h($callerId) . '" timeout="30">';
+        echo '<Dial callerId="' . h($callerId) . '" timeout="30" action="' . h($statusUrl) . '" method="POST">';
         echo '<Number>' . h($to) . '</Number>';
         echo '</Dial>';
     } else {
