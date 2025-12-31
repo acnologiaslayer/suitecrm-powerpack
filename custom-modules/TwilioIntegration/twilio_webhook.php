@@ -53,6 +53,14 @@ switch ($action) {
         // Generate access token for Twilio Client SDK
         handleGetToken();
         break;
+    case 'incoming':
+        // Handle incoming calls - route to browser clients
+        handleIncomingCall();
+        break;
+    case 'caller_lookup':
+        // Lookup caller info by phone number
+        handleCallerLookup();
+        break;
     case 'recording':
         handleRecording();
         break;
@@ -155,6 +163,272 @@ function handleSms() {
 }
 
 /**
+ * Handle incoming calls - route to browser clients
+ * This is called when someone calls a Twilio phone number
+ * It dials all users assigned to that number via browser (Twilio Client)
+ */
+function handleIncomingCall() {
+    header('Content-Type: application/xml');
+
+    $calledNumber = $_REQUEST['To'] ?? '';     // The Twilio number that was called
+    $callerNumber = $_REQUEST['From'] ?? '';   // The person calling
+    $callSid = $_REQUEST['CallSid'] ?? '';
+
+    $GLOBALS['log']->info("Incoming Call - To: $calledNumber, From: $callerNumber, CallSid: $callSid");
+
+    // Clean the called number for lookup
+    $cleanCalledNumber = cleanPhone($calledNumber);
+
+    // Find all users assigned to this phone number in twilio_integration table
+    $assignedUsers = getUsersForPhoneNumber($cleanCalledNumber);
+
+    $GLOBALS['log']->info("Incoming Call - Found " . count($assignedUsers) . " users for number $cleanCalledNumber");
+
+    $baseUrl = getWebhookBaseUrl();
+    $voicemailUrl = $baseUrl . '?action=twiml&dial_action=voicemail&from=' . urlencode($callerNumber);
+
+    echo '<?xml version="1.0" encoding="UTF-8"?>';
+    echo '<Response>';
+
+    if (!empty($assignedUsers)) {
+        // Dial all assigned browser clients simultaneously
+        // First one to answer gets the call
+        echo '<Dial timeout="30" action="' . h($voicemailUrl) . '" method="POST">';
+
+        foreach ($assignedUsers as $userId) {
+            // Client identity must match what's used in token generation
+            $clientIdentity = 'agent_' . $userId;
+            echo '<Client>' . h($clientIdentity) . '</Client>';
+            $GLOBALS['log']->info("Incoming Call - Dialing client: $clientIdentity");
+        }
+
+        echo '</Dial>';
+    } else {
+        // No users assigned to this number, try fallback phone or go to voicemail
+        $fallbackPhone = $GLOBALS['sugar_config']['twilio_fallback_phone'] ?? '';
+
+        if ($fallbackPhone) {
+            $GLOBALS['log']->info("Incoming Call - No users found, trying fallback: $fallbackPhone");
+            echo '<Say voice="Polly.Joanna">Please hold while we connect your call.</Say>';
+            echo '<Dial timeout="20" action="' . h($voicemailUrl) . '" method="POST">';
+            echo '<Number>' . h(cleanPhone($fallbackPhone)) . '</Number>';
+            echo '</Dial>';
+        } else {
+            $GLOBALS['log']->info("Incoming Call - No users or fallback, going to voicemail");
+            echo '<Say voice="Polly.Joanna">Thank you for calling. Please leave a message after the tone.</Say>';
+            echo '<Record maxLength="120" playBeep="true" action="' . h($baseUrl . '?action=twiml&dial_action=recording&from=' . urlencode($callerNumber)) . '"/>';
+            echo '<Say voice="Polly.Joanna">Goodbye.</Say>';
+            echo '<Hangup/>';
+        }
+    }
+
+    echo '</Response>';
+
+    // Log the incoming call to audit
+    logIncomingCall($callSid, $callerNumber, $calledNumber, $assignedUsers);
+}
+
+/**
+ * Get all user IDs assigned to a specific phone number
+ */
+function getUsersForPhoneNumber($phoneNumber) {
+    $db = $GLOBALS['db'];
+    $users = [];
+
+    // Clean phone number for comparison (remove formatting)
+    $cleanPhone = preg_replace('/[^0-9]/', '', $phoneNumber);
+
+    // Try multiple formats for matching
+    $searchPatterns = [
+        $phoneNumber,                          // +11234567890
+        $cleanPhone,                           // 11234567890
+        substr($cleanPhone, -10),              // 1234567890 (last 10 digits)
+        '+' . $cleanPhone,                     // +11234567890
+        '+1' . substr($cleanPhone, -10),       // +11234567890 (US format)
+    ];
+
+    $conditions = [];
+    foreach ($searchPatterns as $pattern) {
+        $conditions[] = "REPLACE(REPLACE(REPLACE(phone_number, '-', ''), ' ', ''), '+', '') LIKE '%" . $db->quote(preg_replace('/[^0-9]/', '', $pattern)) . "%'";
+    }
+
+    $sql = "SELECT DISTINCT assigned_user_id
+            FROM twilio_integration
+            WHERE deleted = 0
+            AND assigned_user_id IS NOT NULL
+            AND assigned_user_id != ''
+            AND (" . implode(' OR ', $conditions) . ")";
+
+    $GLOBALS['log']->info("Incoming Call - User lookup SQL: $sql");
+
+    $result = $db->query($sql);
+    while ($row = $db->fetchByAssoc($result)) {
+        if (!empty($row['assigned_user_id'])) {
+            $users[] = $row['assigned_user_id'];
+        }
+    }
+
+    return $users;
+}
+
+/**
+ * Log incoming call to audit table
+ */
+function logIncomingCall($callSid, $callerNumber, $calledNumber, $assignedUsers) {
+    try {
+        $db = $GLOBALS['db'];
+        $id = generateGuid();
+        $userList = implode(',', $assignedUsers);
+
+        $sql = "INSERT INTO twilio_audit_log (id, action, data, date_created)
+                VALUES ('" . $db->quote($id) . "', 'incoming_call',
+                '" . $db->quote(json_encode([
+                    'call_sid' => $callSid,
+                    'caller' => $callerNumber,
+                    'called' => $calledNumber,
+                    'assigned_users' => $assignedUsers
+                ])) . "', NOW())";
+        $db->query($sql);
+    } catch (Exception $e) {
+        $GLOBALS['log']->error("Failed to log incoming call: " . $e->getMessage());
+    }
+}
+
+/**
+ * Lookup caller information by phone number
+ * Returns Lead or Contact info if found
+ */
+function handleCallerLookup() {
+    header('Content-Type: application/json');
+    header('Cache-Control: no-cache');
+
+    $phone = $_REQUEST['phone'] ?? '';
+
+    if (empty($phone)) {
+        echo json_encode(['success' => false, 'error' => 'Phone number required']);
+        return;
+    }
+
+    $result = lookupCallerByPhone($phone);
+
+    if ($result) {
+        echo json_encode([
+            'success' => true,
+            'found' => true,
+            'name' => $result['name'],
+            'module' => $result['module'],
+            'record_id' => $result['record_id'],
+            'status' => $result['status'] ?? '',
+            'funnel_type' => $result['funnel_type'] ?? ''
+        ]);
+    } else {
+        echo json_encode([
+            'success' => true,
+            'found' => false,
+            'name' => null,
+            'module' => null,
+            'record_id' => null
+        ]);
+    }
+}
+
+/**
+ * Search for a caller in Leads and Contacts tables by phone number
+ */
+function lookupCallerByPhone($phone) {
+    $db = $GLOBALS['db'];
+
+    // Clean phone number - keep only digits
+    $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+
+    // Get last 10 digits for US number matching
+    $last10 = substr($cleanPhone, -10);
+
+    if (strlen($last10) < 7) {
+        return null; // Too short to be a valid phone
+    }
+
+    // Search Leads first
+    $sql = "SELECT id, first_name, last_name, status, funnel_type_c
+            FROM leads
+            WHERE deleted = 0
+            AND (
+                REPLACE(REPLACE(REPLACE(REPLACE(phone_work, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_mobile, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_home, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_other, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_fax, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+            )
+            ORDER BY date_modified DESC
+            LIMIT 1";
+
+    $result = $db->query($sql);
+    $row = $db->fetchByAssoc($result);
+
+    if ($row) {
+        $name = trim($row['first_name'] . ' ' . $row['last_name']);
+        return [
+            'name' => $name ?: 'Unknown Lead',
+            'module' => 'Leads',
+            'record_id' => $row['id'],
+            'status' => $row['status'] ?? '',
+            'funnel_type' => $row['funnel_type_c'] ?? ''
+        ];
+    }
+
+    // Search Contacts if not found in Leads
+    $sql = "SELECT id, first_name, last_name
+            FROM contacts
+            WHERE deleted = 0
+            AND (
+                REPLACE(REPLACE(REPLACE(REPLACE(phone_work, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_mobile, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_home, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_other, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_fax, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+            )
+            ORDER BY date_modified DESC
+            LIMIT 1";
+
+    $result = $db->query($sql);
+    $row = $db->fetchByAssoc($result);
+
+    if ($row) {
+        $name = trim($row['first_name'] . ' ' . $row['last_name']);
+        return [
+            'name' => $name ?: 'Unknown Contact',
+            'module' => 'Contacts',
+            'record_id' => $row['id']
+        ];
+    }
+
+    // Search Accounts by phone
+    $sql = "SELECT id, name
+            FROM accounts
+            WHERE deleted = 0
+            AND (
+                REPLACE(REPLACE(REPLACE(REPLACE(phone_office, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_alternate, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+                OR REPLACE(REPLACE(REPLACE(REPLACE(phone_fax, '-', ''), ' ', ''), '(', ''), ')', '') LIKE '%" . $db->quote($last10) . "%'
+            )
+            ORDER BY date_modified DESC
+            LIMIT 1";
+
+    $result = $db->query($sql);
+    $row = $db->fetchByAssoc($result);
+
+    if ($row) {
+        return [
+            'name' => $row['name'] ?: 'Unknown Account',
+            'module' => 'Accounts',
+            'record_id' => $row['id']
+        ];
+    }
+
+    return null;
+}
+
+/**
  * Generate access token for Twilio Client SDK
  */
 function handleGetToken() {
@@ -201,8 +475,9 @@ function handleGetToken() {
 
 /**
  * Generate JWT Access Token for Twilio Client
+ * Includes both outgoing and incoming call capabilities
  */
-function generateTwilioToken($accountSid, $apiKey, $apiSecret, $identity, $twimlAppSid) {
+function generateTwilioToken($accountSid, $apiKey, $apiSecret, $identity, $twimlAppSid, $includeIncoming = true) {
     $ttl = 3600;
     $now = time();
 
@@ -212,13 +487,23 @@ function generateTwilioToken($accountSid, $apiKey, $apiSecret, $identity, $twiml
         'cty' => 'twilio-fpa;v=1'
     ];
 
+    // Build voice grant with both outgoing and incoming capabilities
+    $voiceGrant = [
+        'outgoing' => [
+            'application_sid' => $twimlAppSid
+        ]
+    ];
+
+    // Add incoming capability for receiving calls
+    if ($includeIncoming) {
+        $voiceGrant['incoming'] = [
+            'allow' => true
+        ];
+    }
+
     $grants = [
         'identity' => $identity,
-        'voice' => [
-            'outgoing' => [
-                'application_sid' => $twimlAppSid
-            ]
-        ]
+        'voice' => $voiceGrant
     ];
 
     $payload = [

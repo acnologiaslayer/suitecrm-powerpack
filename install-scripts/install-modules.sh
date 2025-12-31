@@ -1121,6 +1121,27 @@ else
     echo "  ⚠ Verbacall integration script source not found"
 fi
 
+# Install Twilio incoming call handler script for SuiteCRM 8 Angular UI
+echo ""
+echo "Installing Twilio incoming call handler for Angular UI..."
+if [ -f "/opt/bitnami/suitecrm/dist/twilio-incoming-call.js" ]; then
+    cp /opt/bitnami/suitecrm/dist/twilio-incoming-call.js /bitnami/suitecrm/public/dist/
+
+    # Inject script tag into index.html if not already present
+    if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
+        if ! grep -q "twilio-incoming-call.js" /bitnami/suitecrm/public/dist/index.html; then
+            sed -i 's|</body>|<script src="twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            echo "  ✓ Twilio incoming call script injected into Angular UI"
+        else
+            echo "  Twilio incoming call script already present"
+        fi
+    else
+        echo "  ⚠ Angular index.html not found - incoming calls may not work"
+    fi
+else
+    echo "  ⚠ Twilio incoming call script source not found"
+fi
+
 # Clear all caches
 echo ""
 echo "Clearing caches..."

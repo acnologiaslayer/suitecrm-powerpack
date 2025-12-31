@@ -119,6 +119,22 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
         fi
     fi
 
+    # Copy Twilio incoming call handler JS
+    if [ -f "/opt/bitnami/suitecrm/dist/twilio-incoming-call.js" ]; then
+        echo "Installing Twilio incoming call script..."
+        cp /opt/bitnami/suitecrm/dist/twilio-incoming-call.js /bitnami/suitecrm/public/dist/twilio-incoming-call.js
+        chmod 644 /bitnami/suitecrm/public/dist/twilio-incoming-call.js
+        chown daemon:daemon /bitnami/suitecrm/public/dist/twilio-incoming-call.js
+
+        # Inject script tag into index.html if not already present
+        if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
+            if ! grep -q "twilio-incoming-call.js" /bitnami/suitecrm/public/dist/index.html; then
+                echo "Injecting Twilio incoming call script into Angular UI..."
+                sed -i 's|</body>|<script src="twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            fi
+        fi
+    fi
+
     # Set ownership and permissions
     echo "Setting ownership and permissions..."
     chown -R daemon:daemon /bitnami/suitecrm
@@ -349,6 +365,20 @@ if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legac
             if ! grep -q "leadjourney-buttons.js" /bitnami/suitecrm/public/dist/index.html; then
                 sed -i 's|</body>|<script src="leadjourney-buttons.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
                 echo "LeadJourney buttons script injected into Angular UI"
+            fi
+        fi
+    fi
+
+    # Sync Twilio incoming call handler JS and inject into index.html
+    if [ -f "/opt/bitnami/suitecrm/dist/twilio-incoming-call.js" ]; then
+        cp /opt/bitnami/suitecrm/dist/twilio-incoming-call.js /bitnami/suitecrm/public/dist/twilio-incoming-call.js 2>/dev/null || true
+        chmod 644 /bitnami/suitecrm/public/dist/twilio-incoming-call.js 2>/dev/null || true
+        chown daemon:daemon /bitnami/suitecrm/public/dist/twilio-incoming-call.js 2>/dev/null || true
+        # Inject script tag into index.html if not already present
+        if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
+            if ! grep -q "twilio-incoming-call.js" /bitnami/suitecrm/public/dist/index.html; then
+                sed -i 's|</body>|<script src="twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                echo "Twilio incoming call script injected into Angular UI"
             fi
         fi
     fi

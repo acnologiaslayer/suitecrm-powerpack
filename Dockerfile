@@ -36,11 +36,12 @@ RUN cd /opt/bitnami/suitecrm/notification-websocket && npm install --production
 # Copy custom field extensions
 COPY --chown=daemon:daemon custom-modules/Extensions /opt/bitnami/suitecrm/custom/Extension
 
-# Copy custom extensions (click-to-call, notification, verbacall and leadjourney JS for Angular UI)
+# Copy custom extensions (click-to-call, notification, verbacall, leadjourney and incoming call JS for Angular UI)
 COPY --chown=daemon:daemon config/custom-extensions/dist/twilio-click-to-call.js /opt/bitnami/suitecrm/dist/twilio-click-to-call.js
 COPY --chown=daemon:daemon config/custom-extensions/dist/notification-ws.js /opt/bitnami/suitecrm/dist/notification-ws.js
 COPY --chown=daemon:daemon config/custom-extensions/dist/verbacall-integration.js /opt/bitnami/suitecrm/dist/verbacall-integration.js
 COPY --chown=daemon:daemon config/custom-extensions/dist/leadjourney-buttons.js /opt/bitnami/suitecrm/dist/leadjourney-buttons.js
+COPY --chown=daemon:daemon config/custom-extensions/dist/twilio-incoming-call.js /opt/bitnami/suitecrm/dist/twilio-incoming-call.js
 
 # Ensure JS files have proper permissions for web serving
 RUN chmod 644 /opt/bitnami/suitecrm/dist/*.js
