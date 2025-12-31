@@ -235,50 +235,61 @@ function handleSms() {
 
     $GLOBALS['log']->info("SMS Webhook - From: $from, To: $to, Body: " . substr($body, 0, 50));
 
-    // Find matching lead/contact
+    // Find matching lead/contact by phone number
     $callerInfo = lookupCallerByPhone($from);
 
-    // Log the incoming SMS to Calls table
     $db = $GLOBALS['db'];
-    $callId = generateGuid();
-    $cleanFrom = cleanPhone($from);
-    $cleanTo = cleanPhone($to);
+    $cleanFrom = preg_replace('/[^0-9]/', '', $from);
 
-    // Get caller name
-    $callerName = $callerInfo ? $callerInfo['name'] : formatPhoneForDisplay($from);
-
-    // Find assigned users for this number to assign the SMS
-    $assignedUsers = getUsersForPhoneNumber($cleanTo);
+    // Find assigned users for this Twilio number
+    $assignedUsers = getUsersForPhoneNumber($to);
     $assignedUserId = !empty($assignedUsers) ? $assignedUsers[0] : '1';
 
-    $sql = "INSERT INTO calls (id, name, date_entered, date_modified, modified_user_id, created_by,
-            description, status, direction, parent_type, parent_id, assigned_user_id,
-            duration_hours, duration_minutes, date_start, date_end)
-            VALUES (
-                '" . $db->quote($callId) . "',
-                'SMS from " . $db->quote($callerName) . "',
-                NOW(), NOW(),
-                '" . $db->quote($assignedUserId) . "',
-                '" . $db->quote($assignedUserId) . "',
-                '" . $db->quote($body) . "',
-                'Held',
-                'Inbound',
-                " . ($callerInfo ? "'" . $db->quote($callerInfo['module']) . "'" : "NULL") . ",
-                " . ($callerInfo ? "'" . $db->quote($callerInfo['record_id']) . "'" : "NULL") . ",
-                '" . $db->quote($assignedUserId) . "',
-                0, 0, NOW(), NOW()
-            )";
+    if ($callerInfo && $callerInfo['module'] === 'Leads') {
+        // Log to lead_journey table for the matching lead
+        $journeyId = generateGuid();
+        $callerName = $callerInfo['name'] ?? 'Unknown';
 
-    try {
-        $db->query($sql);
-        $GLOBALS['log']->info("SMS logged to Calls: $callId");
+        // Create thread_id based on phone number for conversation grouping
+        $threadId = 'sms_' . $cleanFrom;
 
-        // Send WebSocket notification to assigned users
-        foreach ($assignedUsers as $userId) {
-            sendIncomingSmsNotification($userId, $from, $body, $callerInfo);
+        $touchpointData = json_encode([
+            'from' => $from,
+            'to' => $to,
+            'body' => $body,
+            'message_sid' => $messageSid,
+            'direction' => 'inbound'
+        ]);
+
+        $sql = "INSERT INTO lead_journey (id, name, date_entered, date_modified, modified_user_id, created_by,
+                description, deleted, parent_type, parent_id, touchpoint_type, touchpoint_date,
+                touchpoint_data, source, assigned_user_id, thread_id)
+                VALUES (
+                    '" . $db->quote($journeyId) . "',
+                    'SMS from " . $db->quote($callerName) . "',
+                    NOW(), NOW(),
+                    '" . $db->quote($assignedUserId) . "',
+                    '" . $db->quote($assignedUserId) . "',
+                    '" . $db->quote($body) . "',
+                    0,
+                    'Leads',
+                    '" . $db->quote($callerInfo['record_id']) . "',
+                    'SMS_Inbound',
+                    NOW(),
+                    '" . $db->quote($touchpointData) . "',
+                    'Twilio',
+                    '" . $db->quote($assignedUserId) . "',
+                    '" . $db->quote($threadId) . "'
+                )";
+
+        try {
+            $db->query($sql);
+            $GLOBALS['log']->info("Incoming SMS logged to lead_journey for lead: " . $callerInfo['record_id']);
+        } catch (Exception $e) {
+            $GLOBALS['log']->error("Failed to log SMS to lead_journey: " . $e->getMessage());
         }
-    } catch (Exception $e) {
-        $GLOBALS['log']->error("Failed to log SMS: " . $e->getMessage());
+    } else {
+        $GLOBALS['log']->info("Incoming SMS from unknown number: $from - no matching lead found");
     }
 
     header('Content-Type: application/xml');
@@ -339,37 +350,62 @@ function handleSendSms() {
     if ($httpCode >= 200 && $httpCode < 300) {
         $GLOBALS['log']->info("SMS sent successfully to $cleanTo, SID: " . ($result['sid'] ?? 'unknown'));
 
-        // Log the outgoing SMS to Calls table
+        // Log the outgoing SMS to lead_journey table
         global $current_user;
         $db = $GLOBALS['db'];
-        $callId = generateGuid();
 
-        // Lookup recipient
-        $recipientInfo = lookupCallerByPhone($cleanTo);
-        $recipientName = $recipientInfo ? $recipientInfo['name'] : formatPhoneForDisplay($cleanTo);
+        // Determine lead ID - use provided leadId or lookup by phone
+        $parentId = $leadId;
+        $recipientName = formatPhoneForDisplay($cleanTo);
 
-        $sql = "INSERT INTO calls (id, name, date_entered, date_modified, modified_user_id, created_by,
-                description, status, direction, parent_type, parent_id, assigned_user_id,
-                duration_hours, duration_minutes, date_start, date_end)
-                VALUES (
-                    '" . $db->quote($callId) . "',
-                    'SMS to " . $db->quote($recipientName) . "',
-                    NOW(), NOW(),
-                    '" . $db->quote($current_user->id ?? '1') . "',
-                    '" . $db->quote($current_user->id ?? '1') . "',
-                    '" . $db->quote($body) . "',
-                    'Held',
-                    'Outbound',
-                    " . ($recipientInfo ? "'" . $db->quote($recipientInfo['module']) . "'" : ($leadId ? "'Leads'" : "NULL")) . ",
-                    " . ($recipientInfo ? "'" . $db->quote($recipientInfo['record_id']) . "'" : ($leadId ? "'" . $db->quote($leadId) . "'" : "NULL")) . ",
-                    '" . $db->quote($current_user->id ?? '1') . "',
-                    0, 0, NOW(), NOW()
-                )";
+        if (empty($parentId)) {
+            $recipientInfo = lookupCallerByPhone($cleanTo);
+            if ($recipientInfo && $recipientInfo['module'] === 'Leads') {
+                $parentId = $recipientInfo['record_id'];
+                $recipientName = $recipientInfo['name'];
+            }
+        }
 
-        try {
-            $db->query($sql);
-        } catch (Exception $e) {
-            $GLOBALS['log']->error("Failed to log outgoing SMS: " . $e->getMessage());
+        if (!empty($parentId)) {
+            $journeyId = generateGuid();
+            $cleanToDigits = preg_replace('/[^0-9]/', '', $cleanTo);
+            $threadId = 'sms_' . $cleanToDigits;
+
+            $touchpointData = json_encode([
+                'from' => $fromNumber,
+                'to' => $cleanTo,
+                'body' => $body,
+                'message_sid' => $result['sid'] ?? '',
+                'direction' => 'outbound'
+            ]);
+
+            $sql = "INSERT INTO lead_journey (id, name, date_entered, date_modified, modified_user_id, created_by,
+                    description, deleted, parent_type, parent_id, touchpoint_type, touchpoint_date,
+                    touchpoint_data, source, assigned_user_id, thread_id)
+                    VALUES (
+                        '" . $db->quote($journeyId) . "',
+                        'SMS to " . $db->quote($recipientName) . "',
+                        NOW(), NOW(),
+                        '" . $db->quote($current_user->id ?? '1') . "',
+                        '" . $db->quote($current_user->id ?? '1') . "',
+                        '" . $db->quote($body) . "',
+                        0,
+                        'Leads',
+                        '" . $db->quote($parentId) . "',
+                        'SMS_Outbound',
+                        NOW(),
+                        '" . $db->quote($touchpointData) . "',
+                        'Twilio',
+                        '" . $db->quote($current_user->id ?? '1') . "',
+                        '" . $db->quote($threadId) . "'
+                    )";
+
+            try {
+                $db->query($sql);
+                $GLOBALS['log']->info("Outgoing SMS logged to lead_journey for lead: $parentId");
+            } catch (Exception $e) {
+                $GLOBALS['log']->error("Failed to log outgoing SMS to lead_journey: " . $e->getMessage());
+            }
         }
 
         echo json_encode([
@@ -381,38 +417,6 @@ function handleSendSms() {
         $error = $result['message'] ?? 'Failed to send SMS';
         $GLOBALS['log']->error("SMS send failed: $error");
         echo json_encode(['success' => false, 'error' => $error]);
-    }
-}
-
-/**
- * Send WebSocket notification for incoming SMS
- */
-function sendIncomingSmsNotification($userId, $from, $body, $callerInfo) {
-    try {
-        global $sugar_config;
-        $wsUrl = $sugar_config['notification_ws_url'] ?? 'ws://localhost:3001';
-        $jwtSecret = $sugar_config['notification_jwt_secret'] ?? '';
-
-        // Use the notification queue if WebSocket isn't directly accessible
-        $db = $GLOBALS['db'];
-        $id = generateGuid();
-
-        $payload = json_encode([
-            'type' => 'incoming_sms',
-            'from' => $from,
-            'body' => substr($body, 0, 100),
-            'caller_name' => $callerInfo ? $callerInfo['name'] : null,
-            'caller_module' => $callerInfo ? $callerInfo['module'] : null,
-            'caller_record_id' => $callerInfo ? $callerInfo['record_id'] : null
-        ]);
-
-        $sql = "INSERT INTO notification_queue (id, user_id, notification_type, payload, created_at, sent)
-                VALUES ('" . $db->quote($id) . "', '" . $db->quote($userId) . "', 'incoming_sms',
-                '" . $db->quote($payload) . "', NOW(), 0)";
-        $db->query($sql);
-
-    } catch (Exception $e) {
-        $GLOBALS['log']->error("Failed to queue SMS notification: " . $e->getMessage());
     }
 }
 

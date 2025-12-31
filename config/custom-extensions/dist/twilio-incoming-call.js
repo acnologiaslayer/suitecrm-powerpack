@@ -676,95 +676,14 @@
         init();
     }
 
-    // =========================================================================
-    // SMS Functions
-    // =========================================================================
-
-    async function sendSms(to, body, leadId = null) {
-        try {
-            const params = new URLSearchParams({
-                to: to,
-                body: body
-            });
-            if (leadId) {
-                params.append('lead_id', leadId);
-            }
-
-            const response = await fetch('legacy/twilio_webhook.php?action=send_sms', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: params.toString()
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                console.log('[TwilioIncoming] SMS sent successfully:', result.message_sid);
-                showSmsNotification('SMS sent successfully!', 'success');
-            } else {
-                console.error('[TwilioIncoming] SMS failed:', result.error);
-                showSmsNotification('Failed to send SMS: ' + result.error, 'error');
-            }
-
-            return result;
-        } catch (error) {
-            console.error('[TwilioIncoming] SMS error:', error);
-            showSmsNotification('Error sending SMS', 'error');
-            return { success: false, error: error.message };
-        }
-    }
-
-    function showSmsNotification(message, type = 'info') {
-        // Create a simple toast notification
-        const toast = document.createElement('div');
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 16px 24px;
-            border-radius: 8px;
-            color: white;
-            font-weight: 500;
-            z-index: 100001;
-            animation: slideIn 0.3s ease;
-            background: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#17a2b8'};
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        `;
-        toast.textContent = message;
-        document.body.appendChild(toast);
-
-        setTimeout(() => {
-            toast.style.animation = 'slideOut 0.3s ease';
-            setTimeout(() => toast.remove(), 300);
-        }, 3000);
-    }
-
-    // Add CSS for toast animations
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideOut {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
-        }
-    `;
-    document.head.appendChild(style);
-
     // Expose functions for UI buttons
     window.PowerPackTwilio = {
         acceptCall: acceptCall,
         rejectCall: rejectCall,
         endCall: endCall,
-        sendSms: sendSms,
         getDevice: () => device,
         isConnected: () => device?.state === 'registered'
     };
 
-    console.log('[TwilioIncoming] Script loaded - Call & SMS ready');
+    console.log('[TwilioIncoming] Script loaded - Incoming calls ready');
 })();
