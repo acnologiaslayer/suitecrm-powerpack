@@ -162,7 +162,7 @@ try {
                     0,
                     'Leads',
                     '" . $db->quote($leadId) . "',
-                    'SMS_Inbound',
+                    'inbound_sms',
                     NOW(),
                     '" . $db->quote($touchpointData) . "',
                     'Twilio',
@@ -172,6 +172,62 @@ try {
 
         $db->query($sql);
         file_put_contents($logFile, "[$timestamp] Logged SMS to lead_journey for lead: $leadId\n", FILE_APPEND);
+
+        // Send real-time notification to assigned user
+        $alertId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000, mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff));
+
+        $notifTitle = "New SMS from $leadName";
+        $notifMessage = strlen($body) > 100 ? substr($body, 0, 100) . '...' : $body;
+        $urlRedirect = "index.php?module=Leads&action=DetailView&record=$leadId";
+
+        // Create Alert record
+        $alertSql = "INSERT INTO alerts (id, name, description, assigned_user_id, type, is_read, url_redirect, target_module, date_entered, date_modified, deleted)
+                     VALUES (
+                         '" . $db->quote($alertId) . "',
+                         '" . $db->quote($notifTitle) . "',
+                         '" . $db->quote($notifMessage) . "',
+                         '" . $db->quote($assignedUserId) . "',
+                         'info',
+                         0,
+                         '" . $db->quote($urlRedirect) . "',
+                         'Leads',
+                         NOW(), NOW(), 0
+                     )";
+        $db->query($alertSql);
+
+        // Queue for WebSocket delivery
+        $queueId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000, mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff));
+
+        $payload = json_encode([
+            'alert_id' => $alertId,
+            'title' => $notifTitle,
+            'message' => $notifMessage,
+            'type' => 'info',
+            'priority' => 'high',
+            'url_redirect' => $urlRedirect,
+            'target_module' => 'Leads',
+            'target_record' => $leadId,
+            'metadata' => ['sms_from' => $from, 'lead_name' => $leadName]
+        ]);
+
+        $queueSql = "INSERT INTO notification_queue (id, alert_id, user_id, payload, status, created_at)
+                     VALUES (
+                         '" . $db->quote($queueId) . "',
+                         '" . $db->quote($alertId) . "',
+                         '" . $db->quote($assignedUserId) . "',
+                         '" . $db->quote($payload) . "',
+                         'pending',
+                         NOW()
+                     )";
+        $db->query($queueSql);
+        file_put_contents($logFile, "[$timestamp] Notification sent to user: $assignedUserId\n", FILE_APPEND);
+
     } else {
         file_put_contents($logFile, "[$timestamp] No matching lead found for phone: $from\n", FILE_APPEND);
     }
