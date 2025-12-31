@@ -312,48 +312,72 @@
     // Ringing Sound
     // =========================================================================
 
+    let audioContext = null;
+    let isRinging = false;
+
     function startRinging() {
         stopRinging(); // Clear any existing
+        isRinging = true;
 
         try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-            function playRingTone() {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-
-                oscillator.frequency.value = 440; // A4 note
-                oscillator.type = 'sine';
-                gainNode.gain.value = 0.3;
-
-                oscillator.start();
-
-                // Ring pattern: 400ms on, 200ms off, 400ms on, 2000ms off
-                setTimeout(() => oscillator.stop(), 400);
+            // Create or resume audio context
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
             }
 
-            // Play immediately
-            playRingTone();
+            function playRingTone() {
+                if (!isRinging || !audioContext) return;
 
-            // Repeat every 3 seconds
+                // Create dual-tone ring (like a real phone: 440Hz + 480Hz)
+                const osc1 = audioContext.createOscillator();
+                const osc2 = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                osc1.connect(gainNode);
+                osc2.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                osc1.frequency.value = 440; // A4
+                osc2.frequency.value = 480; // Slightly higher for ring effect
+                osc1.type = 'sine';
+                osc2.type = 'sine';
+                gainNode.gain.value = 0.2;
+
+                const now = audioContext.currentTime;
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + 0.4);
+                osc2.stop(now + 0.4);
+            }
+
+            // Play immediately with double ring pattern
+            playRingTone();
+            setTimeout(playRingTone, 500);
+
+            // Repeat every 3 seconds (ring-ring...pause...ring-ring)
             ringInterval = setInterval(() => {
+                if (!isRinging) return;
                 playRingTone();
-                setTimeout(playRingTone, 600);
+                setTimeout(playRingTone, 500);
             }, 3000);
 
+            console.log('[TwilioIncoming] Ringing started');
+
         } catch (e) {
-            console.log('[TwilioIncoming] Audio not supported');
+            console.log('[TwilioIncoming] Audio not supported:', e.message);
         }
     }
 
     function stopRinging() {
+        isRinging = false;
         if (ringInterval) {
             clearInterval(ringInterval);
             ringInterval = null;
         }
+        console.log('[TwilioIncoming] Ringing stopped');
     }
 
     // =========================================================================
@@ -652,14 +676,95 @@
         init();
     }
 
+    // =========================================================================
+    // SMS Functions
+    // =========================================================================
+
+    async function sendSms(to, body, leadId = null) {
+        try {
+            const params = new URLSearchParams({
+                to: to,
+                body: body
+            });
+            if (leadId) {
+                params.append('lead_id', leadId);
+            }
+
+            const response = await fetch('legacy/twilio_webhook.php?action=send_sms', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: params.toString()
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                console.log('[TwilioIncoming] SMS sent successfully:', result.message_sid);
+                showSmsNotification('SMS sent successfully!', 'success');
+            } else {
+                console.error('[TwilioIncoming] SMS failed:', result.error);
+                showSmsNotification('Failed to send SMS: ' + result.error, 'error');
+            }
+
+            return result;
+        } catch (error) {
+            console.error('[TwilioIncoming] SMS error:', error);
+            showSmsNotification('Error sending SMS', 'error');
+            return { success: false, error: error.message };
+        }
+    }
+
+    function showSmsNotification(message, type = 'info') {
+        // Create a simple toast notification
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 100001;
+            animation: slideIn 0.3s ease;
+            background: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#17a2b8'};
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // Add CSS for toast animations
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+    `;
+    document.head.appendChild(style);
+
     // Expose functions for UI buttons
     window.PowerPackTwilio = {
         acceptCall: acceptCall,
         rejectCall: rejectCall,
         endCall: endCall,
+        sendSms: sendSms,
         getDevice: () => device,
         isConnected: () => device?.state === 'registered'
     };
 
-    console.log('[TwilioIncoming] Script loaded');
+    console.log('[TwilioIncoming] Script loaded - Call & SMS ready');
 })();

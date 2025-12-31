@@ -110,6 +110,9 @@ switch ($action) {
     case 'sms':
         handleSms();
         break;
+    case 'send_sms':
+        handleSendSms();
+        break;
     default:
         while (ob_get_level()) { ob_end_clean(); }
         header('Content-Type: application/xml');
@@ -199,12 +202,24 @@ function handleStatus() {
 
     $callSid = $_REQUEST['CallSid'] ?? '';
     $callStatus = $_REQUEST['CallStatus'] ?? '';
+    $dialCallStatus = $_REQUEST['DialCallStatus'] ?? '';
     $duration = $_REQUEST['CallDuration'] ?? '0';
 
-    $GLOBALS['log']->info("Status Webhook - SID: $callSid, Status: $callStatus, Duration: $duration");
+    $GLOBALS['log']->info("Status Webhook - SID: $callSid, CallStatus: $callStatus, DialCallStatus: $dialCallStatus, Duration: $duration");
 
-    header('Content-Type: application/json');
-    echo json_encode(['status' => 'ok', 'call_status' => $callStatus]);
+    // If this is a Dial action callback (has DialCallStatus), return TwiML
+    if (!empty($dialCallStatus)) {
+        header('Content-Type: application/xml');
+        echo '<?xml version="1.0" encoding="UTF-8"?>';
+        echo '<Response>';
+        // Call completed normally, just hang up
+        echo '<Hangup/>';
+        echo '</Response>';
+    } else {
+        // Regular status callback, return JSON
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'ok', 'call_status' => $callStatus]);
+    }
 }
 
 function handleSms() {
@@ -214,12 +229,205 @@ function handleSms() {
     }
 
     $from = $_REQUEST['From'] ?? '';
+    $to = $_REQUEST['To'] ?? '';
     $body = $_REQUEST['Body'] ?? '';
+    $messageSid = $_REQUEST['MessageSid'] ?? '';
 
-    $GLOBALS['log']->info("SMS Webhook - From: $from, Body: " . substr($body, 0, 50));
+    $GLOBALS['log']->info("SMS Webhook - From: $from, To: $to, Body: " . substr($body, 0, 50));
+
+    // Find matching lead/contact
+    $callerInfo = lookupCallerByPhone($from);
+
+    // Log the incoming SMS to Calls table
+    $db = $GLOBALS['db'];
+    $callId = generateGuid();
+    $cleanFrom = cleanPhone($from);
+    $cleanTo = cleanPhone($to);
+
+    // Get caller name
+    $callerName = $callerInfo ? $callerInfo['name'] : formatPhoneForDisplay($from);
+
+    // Find assigned users for this number to assign the SMS
+    $assignedUsers = getUsersForPhoneNumber($cleanTo);
+    $assignedUserId = !empty($assignedUsers) ? $assignedUsers[0] : '1';
+
+    $sql = "INSERT INTO calls (id, name, date_entered, date_modified, modified_user_id, created_by,
+            description, status, direction, parent_type, parent_id, assigned_user_id,
+            duration_hours, duration_minutes, date_start, date_end)
+            VALUES (
+                '" . $db->quote($callId) . "',
+                'SMS from " . $db->quote($callerName) . "',
+                NOW(), NOW(),
+                '" . $db->quote($assignedUserId) . "',
+                '" . $db->quote($assignedUserId) . "',
+                '" . $db->quote($body) . "',
+                'Held',
+                'Inbound',
+                " . ($callerInfo ? "'" . $db->quote($callerInfo['module']) . "'" : "NULL") . ",
+                " . ($callerInfo ? "'" . $db->quote($callerInfo['record_id']) . "'" : "NULL") . ",
+                '" . $db->quote($assignedUserId) . "',
+                0, 0, NOW(), NOW()
+            )";
+
+    try {
+        $db->query($sql);
+        $GLOBALS['log']->info("SMS logged to Calls: $callId");
+
+        // Send WebSocket notification to assigned users
+        foreach ($assignedUsers as $userId) {
+            sendIncomingSmsNotification($userId, $from, $body, $callerInfo);
+        }
+    } catch (Exception $e) {
+        $GLOBALS['log']->error("Failed to log SMS: " . $e->getMessage());
+    }
 
     header('Content-Type: application/xml');
     echo '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+}
+
+/**
+ * Send outgoing SMS
+ */
+function handleSendSms() {
+    // Clear any output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json');
+
+    $to = $_REQUEST['to'] ?? $_REQUEST['To'] ?? '';
+    $body = $_REQUEST['body'] ?? $_REQUEST['Body'] ?? '';
+    $leadId = $_REQUEST['lead_id'] ?? '';
+
+    if (empty($to) || empty($body)) {
+        echo json_encode(['success' => false, 'error' => 'Phone number and message are required']);
+        return;
+    }
+
+    $config = getTwilioConfig();
+    if (empty($config['account_sid']) || empty($config['auth_token']) || empty($config['phone_number'])) {
+        echo json_encode(['success' => false, 'error' => 'Twilio not configured']);
+        return;
+    }
+
+    $cleanTo = cleanPhone($to);
+    $fromNumber = $config['phone_number'];
+
+    // Send SMS via Twilio API
+    $url = "https://api.twilio.com/2010-04-01/Accounts/{$config['account_sid']}/Messages.json";
+
+    $postData = [
+        'To' => $cleanTo,
+        'From' => $fromNumber,
+        'Body' => $body
+    ];
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_USERPWD, $config['account_sid'] . ':' . $config['auth_token']);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $result = json_decode($response, true);
+
+    if ($httpCode >= 200 && $httpCode < 300) {
+        $GLOBALS['log']->info("SMS sent successfully to $cleanTo, SID: " . ($result['sid'] ?? 'unknown'));
+
+        // Log the outgoing SMS to Calls table
+        global $current_user;
+        $db = $GLOBALS['db'];
+        $callId = generateGuid();
+
+        // Lookup recipient
+        $recipientInfo = lookupCallerByPhone($cleanTo);
+        $recipientName = $recipientInfo ? $recipientInfo['name'] : formatPhoneForDisplay($cleanTo);
+
+        $sql = "INSERT INTO calls (id, name, date_entered, date_modified, modified_user_id, created_by,
+                description, status, direction, parent_type, parent_id, assigned_user_id,
+                duration_hours, duration_minutes, date_start, date_end)
+                VALUES (
+                    '" . $db->quote($callId) . "',
+                    'SMS to " . $db->quote($recipientName) . "',
+                    NOW(), NOW(),
+                    '" . $db->quote($current_user->id ?? '1') . "',
+                    '" . $db->quote($current_user->id ?? '1') . "',
+                    '" . $db->quote($body) . "',
+                    'Held',
+                    'Outbound',
+                    " . ($recipientInfo ? "'" . $db->quote($recipientInfo['module']) . "'" : ($leadId ? "'Leads'" : "NULL")) . ",
+                    " . ($recipientInfo ? "'" . $db->quote($recipientInfo['record_id']) . "'" : ($leadId ? "'" . $db->quote($leadId) . "'" : "NULL")) . ",
+                    '" . $db->quote($current_user->id ?? '1') . "',
+                    0, 0, NOW(), NOW()
+                )";
+
+        try {
+            $db->query($sql);
+        } catch (Exception $e) {
+            $GLOBALS['log']->error("Failed to log outgoing SMS: " . $e->getMessage());
+        }
+
+        echo json_encode([
+            'success' => true,
+            'message_sid' => $result['sid'] ?? '',
+            'status' => $result['status'] ?? 'sent'
+        ]);
+    } else {
+        $error = $result['message'] ?? 'Failed to send SMS';
+        $GLOBALS['log']->error("SMS send failed: $error");
+        echo json_encode(['success' => false, 'error' => $error]);
+    }
+}
+
+/**
+ * Send WebSocket notification for incoming SMS
+ */
+function sendIncomingSmsNotification($userId, $from, $body, $callerInfo) {
+    try {
+        global $sugar_config;
+        $wsUrl = $sugar_config['notification_ws_url'] ?? 'ws://localhost:3001';
+        $jwtSecret = $sugar_config['notification_jwt_secret'] ?? '';
+
+        // Use the notification queue if WebSocket isn't directly accessible
+        $db = $GLOBALS['db'];
+        $id = generateGuid();
+
+        $payload = json_encode([
+            'type' => 'incoming_sms',
+            'from' => $from,
+            'body' => substr($body, 0, 100),
+            'caller_name' => $callerInfo ? $callerInfo['name'] : null,
+            'caller_module' => $callerInfo ? $callerInfo['module'] : null,
+            'caller_record_id' => $callerInfo ? $callerInfo['record_id'] : null
+        ]);
+
+        $sql = "INSERT INTO notification_queue (id, user_id, notification_type, payload, created_at, sent)
+                VALUES ('" . $db->quote($id) . "', '" . $db->quote($userId) . "', 'incoming_sms',
+                '" . $db->quote($payload) . "', NOW(), 0)";
+        $db->query($sql);
+
+    } catch (Exception $e) {
+        $GLOBALS['log']->error("Failed to queue SMS notification: " . $e->getMessage());
+    }
+}
+
+/**
+ * Format phone number for display
+ */
+function formatPhoneForDisplay($phone) {
+    $digits = preg_replace('/[^0-9]/', '', $phone);
+    if (strlen($digits) === 11 && $digits[0] === '1') {
+        $digits = substr($digits, 1);
+    }
+    if (strlen($digits) === 10) {
+        return '(' . substr($digits, 0, 3) . ') ' . substr($digits, 3, 3) . '-' . substr($digits, 6);
+    }
+    return $phone;
 }
 
 /**
