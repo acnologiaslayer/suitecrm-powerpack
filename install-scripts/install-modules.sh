@@ -1147,6 +1147,24 @@ else
     echo "  ⚠ Twilio incoming call script source not found"
 fi
 
+# Install SMS webhook for Twilio TwiML App
+echo ""
+echo "Installing SMS webhook for Twilio..."
+if [ -f "/opt/bitnami/suitecrm/modules/TwilioIntegration/sms_webhook_entry.php" ]; then
+    cp /opt/bitnami/suitecrm/modules/TwilioIntegration/sms_webhook_entry.php /bitnami/suitecrm/public/legacy/sms_webhook.php
+    chown daemon:daemon /bitnami/suitecrm/public/legacy/sms_webhook.php
+    chmod 644 /bitnami/suitecrm/public/legacy/sms_webhook.php
+    echo "  ✓ SMS webhook installed at /legacy/sms_webhook.php"
+    echo "  Twilio TwiML App Messaging URL: https://YOUR_DOMAIN/legacy/sms_webhook.php"
+elif [ -f "/bitnami/suitecrm/modules/TwilioIntegration/sms_webhook_entry.php" ]; then
+    cp /bitnami/suitecrm/modules/TwilioIntegration/sms_webhook_entry.php /bitnami/suitecrm/public/legacy/sms_webhook.php
+    chown daemon:daemon /bitnami/suitecrm/public/legacy/sms_webhook.php
+    chmod 644 /bitnami/suitecrm/public/legacy/sms_webhook.php
+    echo "  ✓ SMS webhook installed at /legacy/sms_webhook.php"
+else
+    echo "  ⚠ SMS webhook source not found"
+fi
+
 # Clear all caches
 echo ""
 echo "Clearing caches..."
