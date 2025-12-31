@@ -538,31 +538,58 @@ function base64UrlEncode($data) {
 function handleVoiceCall() {
     header('Content-Type: application/xml');
 
-    $to = $_REQUEST['To'] ?? '';
-    $from = $_REQUEST['From'] ?? '';
-    $direction = $_REQUEST['Direction'] ?? '';
-    $callSid = $_REQUEST['CallSid'] ?? '';
+    // Log all incoming parameters for debugging
+    $GLOBALS['log']->info("Voice Call - All REQUEST params: " . json_encode($_REQUEST));
+    $GLOBALS['log']->info("Voice Call - All POST params: " . json_encode($_POST));
+    $GLOBALS['log']->info("Voice Call - All GET params: " . json_encode($_GET));
 
-    $GLOBALS['log']->info("Voice Call - Direction: $direction, To: $to, From: $from, CallSid: $callSid");
+    // Extract parameters - check multiple cases/formats
+    $to = $_REQUEST['To'] ?? $_REQUEST['to'] ?? $_POST['To'] ?? $_POST['to'] ?? '';
+    $from = $_REQUEST['From'] ?? $_REQUEST['from'] ?? $_POST['From'] ?? $_POST['from'] ?? '';
+    $direction = $_REQUEST['Direction'] ?? $_REQUEST['direction'] ?? '';
+    $callSid = $_REQUEST['CallSid'] ?? $_REQUEST['callSid'] ?? '';
+
+    // Also check for PhoneNumber parameter (alternative name)
+    if (empty($to)) {
+        $to = $_REQUEST['PhoneNumber'] ?? $_REQUEST['phoneNumber'] ?? $_REQUEST['phone'] ?? '';
+    }
+
+    $GLOBALS['log']->info("Voice Call - Direction: '$direction', To: '$to', From: '$from', CallSid: '$callSid'");
 
     // Determine if this is an incoming or outgoing call
     // Method 1: Check Direction parameter (most reliable when available)
     // Method 2: Check if From starts with 'client:' (outgoing from browser)
-    // Method 3: Check if To matches our Twilio numbers (incoming)
+    // Method 3: Check if From contains 'agent_' (another format for client identity)
 
     $isIncoming = false;
+    $detectionMethod = 'unknown';
 
     if ($direction === 'inbound') {
         $isIncoming = true;
+        $detectionMethod = 'Direction=inbound';
     } elseif (strpos($from, 'client:') === 0) {
-        // From browser client - this is an outgoing call
+        // From browser client - this is an outgoing call (format: client:agent_xxx or client:user_xxx)
         $isIncoming = false;
+        $detectionMethod = 'From starts with client:';
+    } elseif (strpos($from, 'agent_') !== false || strpos($from, 'user_') !== false) {
+        // Alternative format for browser client identity (agent_xxx or user_xxx)
+        $isIncoming = false;
+        $detectionMethod = 'From contains agent_ or user_';
+    } elseif (!empty($to) && isOurTwilioNumber($to)) {
+        // To is one of our Twilio numbers - this is incoming
+        $isIncoming = true;
+        $detectionMethod = 'To is our Twilio number';
+    } elseif (!empty($from) && isPhoneNumber($from)) {
+        // From is a regular phone number calling us
+        $isIncoming = true;
+        $detectionMethod = 'From is phone number';
     } else {
-        // From is a phone number - check if To is one of our Twilio numbers
-        $isIncoming = isOurTwilioNumber($to);
+        // Default to outgoing if we can't determine
+        $isIncoming = false;
+        $detectionMethod = 'default (assumed outgoing)';
     }
 
-    $GLOBALS['log']->info("Voice Call - Detected as " . ($isIncoming ? "INCOMING" : "OUTGOING"));
+    $GLOBALS['log']->info("Voice Call - Detected as " . ($isIncoming ? "INCOMING" : "OUTGOING") . " via: $detectionMethod");
 
     if ($isIncoming) {
         // Handle incoming call - route to browser clients
@@ -571,6 +598,19 @@ function handleVoiceCall() {
         // Handle outgoing call from browser
         handleOutgoingVoiceCall($to, $from);
     }
+}
+
+/**
+ * Check if a string looks like a phone number (not a client identity)
+ */
+function isPhoneNumber($str) {
+    // Client identities contain 'client:', 'agent_', or 'user_'
+    if (strpos($str, 'client:') !== false || strpos($str, 'agent_') !== false || strpos($str, 'user_') !== false) {
+        return false;
+    }
+    // Phone numbers should have at least 7 digits
+    $digits = preg_replace('/[^0-9]/', '', $str);
+    return strlen($digits) >= 7;
 }
 
 /**
@@ -672,13 +712,10 @@ function handleIncomingVoiceCall($calledNumber, $callerNumber, $callSid) {
  * Handle outgoing voice call from browser client
  */
 function handleOutgoingVoiceCall($to, $from) {
-    $GLOBALS['log']->info("Outgoing Voice Call - To: $to, From: $from");
+    $GLOBALS['log']->info("Outgoing Voice Call - Raw To: $to, From: $from");
 
     // Get CallerId from request or use config
     $callerId = $_REQUEST['CallerId'] ?? '';
-
-    // Clean and format the destination number
-    $to = cleanPhone($to);
 
     // Get Twilio config for caller ID
     $config = getTwilioConfig();
@@ -692,13 +729,20 @@ function handleOutgoingVoiceCall($to, $from) {
     echo '<?xml version="1.0" encoding="UTF-8"?>';
     echo '<Response>';
 
-    if (!empty($to)) {
+    // Check if To has any digits before cleaning
+    $toDigits = preg_replace('/[^0-9]/', '', $to);
+    if (strlen($toDigits) >= 7) {
+        // Clean and format the destination number
+        $cleanTo = cleanPhone($to);
+        $GLOBALS['log']->info("Outgoing Voice Call - Clean To: $cleanTo, CallerId: $callerId");
+
         // Dial the destination number
         // The browser (Twilio Client) is already connected, this connects to the recipient
         echo '<Dial callerId="' . h($callerId) . '" timeout="30" action="' . h($statusUrl) . '" method="POST">';
-        echo '<Number>' . h($to) . '</Number>';
+        echo '<Number>' . h($cleanTo) . '</Number>';
         echo '</Dial>';
     } else {
+        $GLOBALS['log']->error("Outgoing Voice Call - No valid destination number. Raw To: '$to', Digits: '$toDigits'");
         echo '<Say voice="Polly.Joanna">No destination number provided.</Say>';
         echo '<Hangup/>';
     }
