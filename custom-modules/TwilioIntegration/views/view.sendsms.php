@@ -490,7 +490,12 @@ class TwilioIntegrationViewSendsms extends SugarView {
     }
     
     private function sendSMS() {
+        // Clear any output buffers to ensure clean JSON response
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Content-Type: application/json');
+        header('Cache-Control: no-cache');
 
         $to = $_POST['to'] ?? '';
         $from = $_POST['from'] ?? '';
@@ -571,8 +576,12 @@ class TwilioIntegrationViewSendsms extends SugarView {
     }
     
     private function getMessageStatus() {
+        // Clear any output buffers
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Content-Type: application/json');
-        
+
         $messageSid = $_POST['message_sid'] ?? '';
         
         if (empty($messageSid)) {
@@ -613,8 +622,12 @@ class TwilioIntegrationViewSendsms extends SugarView {
     }
     
     private function getTemplates() {
+        // Clear any output buffers
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Content-Type: application/json');
-        
+
         // Return default templates - could be expanded to load from database
         $templates = [
             ['id' => 'followup', 'name' => 'Follow-up', 'message' => "Hi! Just following up on our conversation. Let me know if you have any questions."],

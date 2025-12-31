@@ -119,6 +119,34 @@ elif [ -f "/bitnami/suitecrm/custom/Extension/application/Ext/ActionDefs/PowerPa
     cp /bitnami/suitecrm/custom/Extension/application/Ext/ActionDefs/PowerPackActions.php /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/ActionDefs/
 fi
 
+# Create EntryPointRegistry for SMS webhook
+echo "Registering SMS webhook entry point..."
+mkdir -p /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/EntryPointRegistry
+mkdir -p /bitnami/suitecrm/public/legacy/custom/application/Ext/EntryPointRegistry
+
+# Create the entry point registry file
+cat > /bitnami/suitecrm/public/legacy/custom/Extension/application/Ext/EntryPointRegistry/sms_webhook.php << 'PHPEOF'
+<?php
+// SMS Webhook Entry Point Registration
+if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
+$entry_point_registry['sms_webhook'] = array(
+    'file' => 'modules/TwilioIntegration/sms_entry_point.php',
+    'auth' => false
+);
+PHPEOF
+
+# Also create the compiled version
+cat > /bitnami/suitecrm/public/legacy/custom/application/Ext/EntryPointRegistry/entry_point_registry.ext.php << 'PHPEOF'
+<?php
+// PowerPack Entry Point Registry - Compiled
+$entry_point_registry['sms_webhook'] = array(
+    'file' => 'modules/TwilioIntegration/sms_entry_point.php',
+    'auth' => false
+);
+PHPEOF
+
+echo "SMS webhook entry point registered"
+
 # Create compiled language extension for dropdown lists
 # Note: This OVERWRITES the file to prevent duplicate die() statements from compiled extensions
 mkdir -p /bitnami/suitecrm/public/legacy/custom/application/Ext/Language
