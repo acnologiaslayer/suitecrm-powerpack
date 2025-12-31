@@ -39,6 +39,22 @@ define('sugarEntry', true);
 // Use SuiteCRM's entryPoint for proper bootstrap (loads all required classes)
 require_once('include/entryPoint.php');
 
+// For token endpoint, we need to authenticate the user from session
+// Start session if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Try to load current user from session
+global $current_user;
+if (empty($current_user) || empty($current_user->id)) {
+    if (!empty($_SESSION['authenticated_user_id'])) {
+        $current_user = BeanFactory::getBean('Users', $_SESSION['authenticated_user_id']);
+    } elseif (!empty($_SESSION['user_id'])) {
+        $current_user = BeanFactory::getBean('Users', $_SESSION['user_id']);
+    }
+}
+
 // Get action parameter
 $action = isset($_REQUEST['action']) ? $_REQUEST['action'] : 'twiml';
 $dialAction = isset($_REQUEST['dial_action']) ? $_REQUEST['dial_action'] : 'outbound';
@@ -515,8 +531,27 @@ function handleGetToken() {
         return;
     }
 
-    // Generate identity from session or default
-    $identity = 'agent_' . (isset($_SESSION['authenticated_user_id']) ? $_SESSION['authenticated_user_id'] : 'web');
+    // Generate identity from current user
+    // SuiteCRM uses $current_user global, not $_SESSION
+    global $current_user;
+    $userId = null;
+
+    // Try multiple sources for user ID
+    if (!empty($current_user->id)) {
+        $userId = $current_user->id;
+    } elseif (isset($_SESSION['authenticated_user_id'])) {
+        $userId = $_SESSION['authenticated_user_id'];
+    } elseif (isset($_SESSION['user_id'])) {
+        $userId = $_SESSION['user_id'];
+    }
+
+    if (empty($userId)) {
+        echo json_encode(['success' => false, 'error' => 'Not authenticated. Please log in.']);
+        return;
+    }
+
+    $identity = 'agent_' . $userId;
+    $GLOBALS['log']->info("Twilio Token - Generated identity: $identity for user: $userId");
 
     // Generate JWT token
     $token = generateTwilioToken($config['account_sid'], $apiKey, $apiSecret, $identity, $twimlAppSid);
