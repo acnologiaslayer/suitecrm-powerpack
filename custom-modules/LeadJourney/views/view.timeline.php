@@ -337,15 +337,15 @@ class LeadJourneyViewTimeline extends SugarView {
                     </div>
                     <div class="stat-box">
                         <div class="label">Calls</div>
-                        <div class="value"><?php echo $this->countByType($timeline, ['call', 'inbound_call', 'outbound_call']); ?></div>
+                        <div class="value"><?php echo $this->countByType($timeline, ['call', 'inbound_call', 'outbound_call', 'call_inbound', 'call_outbound']); ?></div>
                     </div>
                     <div class="stat-box">
                         <div class="label">Emails</div>
-                        <div class="value"><?php echo $this->countByType($timeline, ['email', 'inbound_email']); ?></div>
+                        <div class="value"><?php echo $this->countByType($timeline, ['email', 'inbound_email', 'email_inbound']); ?></div>
                     </div>
                     <div class="stat-box">
                         <div class="label">SMS</div>
-                        <div class="value"><?php echo $this->countByType($timeline, ['sms', 'inbound_sms', 'outbound_sms']); ?></div>
+                        <div class="value"><?php echo $this->countByType($timeline, ['sms', 'inbound_sms', 'outbound_sms', 'sms_inbound', 'sms_outbound']); ?></div>
                     </div>
                 </div>
             </div>
@@ -504,8 +504,8 @@ class LeadJourneyViewTimeline extends SugarView {
     private function renderTimelineItem($item) {
         ob_start();
         $type = $item['type'];
-        // Normalize type for CSS class
-        $cssType = str_replace(['inbound_', 'outbound_'], '', $type);
+        // Normalize type for CSS class - handle both prefix (inbound_sms) and suffix (call_inbound) formats
+        $cssType = str_replace(['inbound_', 'outbound_', '_inbound', '_outbound'], '', $type);
         ?>
         <div class="timeline-item <?php echo htmlspecialchars($cssType); ?>" data-type="<?php echo htmlspecialchars($cssType); ?>">
             <div class="timeline-icon">

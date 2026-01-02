@@ -1,13 +1,13 @@
 <?php
 /**
- * InboundEmail vardefs - Field definitions
+ * InboundEmail vardefs - Field definitions for core inbound_email table with OAuth support
  */
 
 if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
 
 $dictionary['InboundEmail'] = [
-    'table' => 'inbound_email_config',
-    'audited' => true,
+    'table' => 'inbound_email',
+    'audited' => false,
     'fields' => [
         'id' => [
             'name' => 'id',
@@ -20,7 +20,6 @@ $dictionary['InboundEmail'] = [
             'vname' => 'LBL_NAME',
             'type' => 'varchar',
             'len' => 255,
-            'required' => true,
         ],
         'date_entered' => [
             'name' => 'date_entered',
@@ -34,135 +33,107 @@ $dictionary['InboundEmail'] = [
         ],
         'modified_user_id' => [
             'name' => 'modified_user_id',
-            'vname' => 'LBL_MODIFIED_USER_ID',
             'type' => 'id',
         ],
         'created_by' => [
             'name' => 'created_by',
-            'vname' => 'LBL_CREATED_BY',
             'type' => 'id',
-        ],
-        'description' => [
-            'name' => 'description',
-            'vname' => 'LBL_DESCRIPTION',
-            'type' => 'text',
         ],
         'deleted' => [
             'name' => 'deleted',
-            'vname' => 'LBL_DELETED',
             'type' => 'bool',
             'default' => 0,
         ],
-        'assigned_user_id' => [
-            'name' => 'assigned_user_id',
-            'vname' => 'LBL_ASSIGNED_USER_ID',
-            'type' => 'id',
+        'status' => [
+            'name' => 'status',
+            'vname' => 'LBL_STATUS',
+            'type' => 'varchar',
+            'len' => 100,
+            'default' => 'Active',
         ],
-        'server' => [
-            'name' => 'server',
+        'server_url' => [
+            'name' => 'server_url',
             'vname' => 'LBL_SERVER',
             'type' => 'varchar',
-            'len' => 255,
-            'required' => true,
-            'comment' => 'IMAP/POP3 server hostname',
+            'len' => 100,
+        ],
+        'email_user' => [
+            'name' => 'email_user',
+            'vname' => 'LBL_EMAIL_USER',
+            'type' => 'varchar',
+            'len' => 100,
+        ],
+        'email_password' => [
+            'name' => 'email_password',
+            'vname' => 'LBL_PASSWORD',
+            'type' => 'varchar',
+            'len' => 100,
         ],
         'port' => [
             'name' => 'port',
             'vname' => 'LBL_PORT',
             'type' => 'int',
-            'len' => 5,
             'default' => 993,
-            'comment' => 'Server port (993 for IMAPS, 143 for IMAP)',
         ],
         'protocol' => [
             'name' => 'protocol',
             'vname' => 'LBL_PROTOCOL',
-            'type' => 'enum',
-            'options' => 'inbound_email_protocol_list',
-            'default' => 'imap',
-            'len' => 10,
-        ],
-        'username' => [
-            'name' => 'username',
-            'vname' => 'LBL_USERNAME',
             'type' => 'varchar',
             'len' => 255,
-            'required' => true,
+            'default' => 'imap',
         ],
-        'password_enc' => [
-            'name' => 'password_enc',
-            'vname' => 'LBL_PASSWORD',
-            'type' => 'varchar',
-            'len' => 500,
-            'reportable' => false,
-            'comment' => 'Encrypted password',
+        'mailbox' => [
+            'name' => 'mailbox',
+            'vname' => 'LBL_MAILBOX',
+            'type' => 'text',
         ],
-        'ssl' => [
-            'name' => 'ssl',
+        'is_ssl' => [
+            'name' => 'is_ssl',
             'vname' => 'LBL_SSL',
             'type' => 'bool',
-            'default' => 1,
+            'default' => 0,
         ],
-        'folder' => [
-            'name' => 'folder',
-            'vname' => 'LBL_FOLDER',
+        'mailbox_type' => [
+            'name' => 'mailbox_type',
             'type' => 'varchar',
-            'len' => 100,
-            'default' => 'INBOX',
+            'len' => 10,
         ],
-        'polling_interval' => [
-            'name' => 'polling_interval',
-            'vname' => 'LBL_POLLING_INTERVAL',
-            'type' => 'int',
-            'len' => 5,
-            'default' => 300,
-            'comment' => 'Polling interval in seconds',
-        ],
-        'last_poll_date' => [
-            'name' => 'last_poll_date',
-            'vname' => 'LBL_LAST_POLL_DATE',
-            'type' => 'datetime',
-        ],
-        'last_uid' => [
-            'name' => 'last_uid',
-            'vname' => 'LBL_LAST_UID',
-            'type' => 'int',
-            'default' => 0,
-            'comment' => 'Last processed email UID',
-        ],
-        'status' => [
-            'name' => 'status',
-            'vname' => 'LBL_STATUS',
-            'type' => 'enum',
-            'options' => 'inbound_email_status_list',
-            'default' => 'active',
-            'len' => 20,
-        ],
-        'auto_import' => [
-            'name' => 'auto_import',
-            'vname' => 'LBL_AUTO_IMPORT',
-            'type' => 'bool',
-            'default' => 1,
-            'comment' => 'Automatically import and link emails',
-        ],
-        'delete_after_import' => [
-            'name' => 'delete_after_import',
-            'vname' => 'LBL_DELETE_AFTER_IMPORT',
+        'is_personal' => [
+            'name' => 'is_personal',
             'type' => 'bool',
             'default' => 0,
-            'comment' => 'Delete emails from server after import',
+        ],
+        'delete_seen' => [
+            'name' => 'delete_seen',
+            'type' => 'bool',
+            'default' => 0,
+        ],
+        'auth_type' => [
+            'name' => 'auth_type',
+            'vname' => 'LBL_AUTH_TYPE',
+            'type' => 'varchar',
+            'len' => 255,
+            'default' => 'basic',
+        ],
+        'external_oauth_connection_id' => [
+            'name' => 'external_oauth_connection_id',
+            'vname' => 'LBL_OAUTH_CONNECTION',
+            'type' => 'id',
+        ],
+        'group_id' => [
+            'name' => 'group_id',
+            'type' => 'id',
+        ],
+        'stored_options' => [
+            'name' => 'stored_options',
+            'type' => 'text',
         ],
     ],
     'indices' => [
         [
-            'name' => 'inbound_email_config_pk',
+            'name' => 'inbound_emailpk',
             'type' => 'primary',
             'fields' => ['id'],
-        ],
-        [
-            'name' => 'idx_inbound_email_status',
-            'type' => 'index',
-            'fields' => ['status', 'deleted'],
         ],
     ],
 ];

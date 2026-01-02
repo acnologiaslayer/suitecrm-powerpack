@@ -125,33 +125,43 @@ class LeadJourney extends Basic {
     
     /**
      * Get all emails for a record
+     * Checks both emails_beans relationship table and direct parent_type/parent_id
      */
     private static function getEmails($parentType, $parentId) {
         global $db;
-        
-        $query = "SELECT e.id, e.name, e.date_sent, e.status, e.description_html
+
+        // Get emails via emails_beans relationship or direct parent link
+        // Join with emails_text for description content
+        $query = "SELECT DISTINCT e.id, e.name, e.date_sent_received, e.status, e.type,
+                         et.from_addr, et.description_html
                   FROM emails e
-                  JOIN emails_beans eb ON e.id = eb.email_id
-                  WHERE eb.bean_module = " . $db->quoted($parentType) . "
-                  AND eb.bean_id = " . $db->quoted($parentId) . "
-                  AND e.deleted = 0
-                  ORDER BY e.date_sent DESC";
-        
+                  LEFT JOIN emails_beans eb ON e.id = eb.email_id
+                  LEFT JOIN emails_text et ON e.id = et.email_id
+                  WHERE e.deleted = 0
+                  AND (
+                      (eb.bean_module = " . $db->quoted($parentType) . " AND eb.bean_id = " . $db->quoted($parentId) . ")
+                      OR
+                      (e.parent_type = " . $db->quoted($parentType) . " AND e.parent_id = " . $db->quoted($parentId) . ")
+                  )
+                  ORDER BY e.date_sent_received DESC";
+
         $result = $db->query($query);
         $emails = array();
-        
+
         while ($row = $db->fetchByAssoc($result)) {
+            $emailType = $row['type'] === 'inbound' ? 'inbound_email' : 'email';
             $emails[] = array(
                 'id' => $row['id'],
-                'type' => 'email',
+                'type' => $emailType,
                 'icon' => 'envelope',
                 'title' => $row['name'],
-                'date' => $row['date_sent'],
+                'date' => $row['date_sent_received'],
                 'status' => $row['status'],
-                'description' => strip_tags($row['description_html']),
+                'from' => $row['from_addr'] ?? '',
+                'description' => strip_tags($row['description_html'] ?? ''),
             );
         }
-        
+
         return $emails;
     }
     

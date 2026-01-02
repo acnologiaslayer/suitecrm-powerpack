@@ -4,6 +4,8 @@
  *
  * Handles IMAP/POP3 email account settings for fetching inbound emails
  * and linking them to Leads/Contacts in the CRM.
+ *
+ * Uses the core SuiteCRM inbound_email table with OAuth support.
  */
 
 if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
@@ -14,35 +16,42 @@ class InboundEmail extends SugarBean
 {
     public $module_dir = 'InboundEmail';
     public $object_name = 'InboundEmail';
-    public $table_name = 'inbound_email_config';
+    public $table_name = 'inbound_email';
     public $new_schema = true;
     public $importable = false;
 
-    // Fields
+    // Fields - matching core inbound_email table
     public $id;
     public $name;
     public $date_entered;
     public $date_modified;
     public $modified_user_id;
     public $created_by;
-    public $description;
     public $deleted;
-    public $assigned_user_id;
 
-    // Email server config
-    public $server;
+    // Email server config - core field names
+    public $server_url;
     public $port;
     public $protocol;
-    public $username;
-    public $password_enc;
-    public $ssl;
-    public $folder;
-    public $polling_interval;
-    public $last_poll_date;
-    public $last_uid;
+    public $email_user;
+    public $email_password;
+    public $is_ssl;
+    public $mailbox;
     public $status;
-    public $auto_import;
-    public $delete_after_import;
+    public $mailbox_type;
+    public $is_personal;
+    public $delete_seen;
+
+    // OAuth fields
+    public $auth_type;
+    public $external_oauth_connection_id;
+
+    // Additional fields
+    public $group_id;
+    public $stored_options;
+    public $delete_after_import = false;
+    public $last_poll_time;
+    public $last_uid;
 
     public function __construct()
     {
@@ -67,12 +76,11 @@ class InboundEmail extends SugarBean
      */
     public function getPassword()
     {
-        if (empty($this->password_enc)) {
+        if (empty($this->email_password)) {
             return '';
         }
 
-        // Simple base64 decode (for demo - production should use proper encryption)
-        return base64_decode($this->password_enc);
+        return blowfishDecode(blowfishGetKey('encrypt_field'), $this->email_password);
     }
 
     /**
@@ -81,10 +89,9 @@ class InboundEmail extends SugarBean
     public function setPassword($password)
     {
         if (empty($password)) {
-            $this->password_enc = '';
+            $this->email_password = '';
         } else {
-            // Simple base64 encode (for demo - production should use proper encryption)
-            $this->password_enc = base64_encode($password);
+            $this->email_password = blowfishEncode(blowfishGetKey('encrypt_field'), $password);
         }
     }
 
@@ -96,7 +103,7 @@ class InboundEmail extends SugarBean
         $db = DBManagerFactory::getInstance();
         $configs = [];
 
-        $sql = "SELECT id FROM inbound_email_config WHERE status = 'active' AND deleted = 0";
+        $sql = "SELECT id FROM inbound_email WHERE status = 'Active' AND deleted = 0";
         $result = $db->query($sql);
 
         while ($row = $db->fetchByAssoc($result)) {
@@ -110,61 +117,99 @@ class InboundEmail extends SugarBean
     }
 
     /**
-     * Update last poll information
-     */
-    public function updateLastPoll($lastUid = null)
-    {
-        $db = DBManagerFactory::getInstance();
-        $now = gmdate('Y-m-d H:i:s');
-        $id = $db->quote($this->id);
-
-        $sql = "UPDATE inbound_email_config SET last_poll_date = '$now'";
-        if ($lastUid !== null) {
-            $sql .= ", last_uid = " . intval($lastUid);
-        }
-        $sql .= " WHERE id = '$id'";
-
-        $db->query($sql);
-        $this->last_poll_date = $now;
-        if ($lastUid !== null) {
-            $this->last_uid = $lastUid;
-        }
-    }
-
-    /**
-     * Set status with error message
-     */
-    public function setStatus($status, $errorMessage = '')
-    {
-        $db = DBManagerFactory::getInstance();
-        $id = $db->quote($this->id);
-        $statusSafe = $db->quote($status);
-
-        $sql = "UPDATE inbound_email_config SET status = '$statusSafe'";
-        if (!empty($errorMessage)) {
-            $errorSafe = $db->quote($errorMessage);
-            $sql .= ", description = CONCAT(IFNULL(description, ''), '\\n[', NOW(), '] Error: $errorSafe')";
-        }
-        $sql .= " WHERE id = '$id'";
-
-        $db->query($sql);
-        $this->status = $status;
-    }
-
-    /**
      * Get IMAP connection string
      */
     public function getConnectionString()
     {
-        $server = $this->server;
-        $port = $this->port ?: ($this->ssl ? 993 : 143);
+        $server = $this->server_url;
+        $port = $this->port ?: ($this->is_ssl ? 993 : 143);
         $protocol = strtolower($this->protocol ?: 'imap');
 
         $flags = '/' . $protocol;
-        if ($this->ssl) {
+        if ($this->is_ssl) {
             $flags .= '/ssl/novalidate-cert';
         }
 
-        return '{' . $server . ':' . $port . $flags . '}' . ($this->folder ?: 'INBOX');
+        return '{' . $server . ':' . $port . $flags . '}' . ($this->mailbox ?: 'INBOX');
+    }
+
+    /**
+     * Set status and optional message
+     *
+     * @param string $status Status value (Active, Inactive, error)
+     * @param string|null $message Optional status message
+     */
+    public function setStatus($status, $message = null)
+    {
+        $this->status = $status;
+
+        // Store message in stored_options if provided
+        if ($message !== null) {
+            $options = $this->getStoredOptions();
+            $options['status_message'] = $message;
+            $options['status_time'] = date('Y-m-d H:i:s');
+            $this->setStoredOptions($options);
+        }
+
+        $this->save();
+    }
+
+    /**
+     * Update last poll time and optionally last UID
+     *
+     * @param int|null $lastUid Last processed UID
+     */
+    public function updateLastPoll($lastUid = null)
+    {
+        $options = $this->getStoredOptions();
+        $options['last_poll_time'] = date('Y-m-d H:i:s');
+
+        if ($lastUid !== null) {
+            $options['last_uid'] = $lastUid;
+        }
+
+        $this->setStoredOptions($options);
+        $this->save();
+    }
+
+    /**
+     * Get stored options as array
+     *
+     * @return array
+     */
+    public function getStoredOptions()
+    {
+        if (empty($this->stored_options)) {
+            return [];
+        }
+
+        $decoded = json_decode($this->stored_options, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            // Try base64 decode (SuiteCRM sometimes uses this)
+            $decoded = unserialize(base64_decode($this->stored_options));
+        }
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Set stored options from array
+     *
+     * @param array $options
+     */
+    public function setStoredOptions($options)
+    {
+        $this->stored_options = json_encode($options);
+    }
+
+    /**
+     * Get last UID processed
+     *
+     * @return int
+     */
+    public function getLastUid()
+    {
+        $options = $this->getStoredOptions();
+        return $options['last_uid'] ?? 0;
     }
 }

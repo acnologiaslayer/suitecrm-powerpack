@@ -1,8 +1,9 @@
 <?php
 /**
- * InboundEmailClient - IMAP/POP3 Connection Wrapper
+ * InboundEmailClient - IMAP/POP3 Connection Wrapper with OAuth Support
  *
  * Handles connecting to email servers and fetching messages.
+ * Supports both basic authentication and OAuth 2.0 (XOAUTH2).
  */
 
 if (!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
@@ -30,6 +31,92 @@ class InboundEmailClient
     }
 
     /**
+     * Get OAuth access token from ExternalOAuthConnection
+     * Handles token refresh if expired
+     *
+     * @return string|null Access token or null on failure
+     */
+    private function getOAuthAccessToken()
+    {
+        $connectionId = $this->config->external_oauth_connection_id ?? '';
+
+        if (empty($connectionId)) {
+            $this->lastError = 'No OAuth connection configured';
+            return null;
+        }
+
+        // Load the OAuth connection bean
+        // Note: Using newBean()->retrieve() instead of getBean() for compatibility
+        $oauthConnection = BeanFactory::newBean('ExternalOAuthConnection');
+        $oauthConnection->retrieve($connectionId);
+
+        if (!$oauthConnection || !$oauthConnection->id) {
+            $this->lastError = 'OAuth connection not found';
+            return null;
+        }
+
+        // Check if access token exists
+        $accessToken = $oauthConnection->access_token ?? '';
+        if (empty($accessToken)) {
+            $this->lastError = 'OAuth connection not authorized - no access token';
+            return null;
+        }
+
+        // Check if token is expired and refresh if needed
+        $expiresIn = $oauthConnection->expires_in ?? '';
+        if (!empty($expiresIn)) {
+            $expiresTimestamp = (int) $expiresIn;
+            if (time() > $expiresTimestamp) {
+                // Token expired, try to refresh
+                $accessToken = $this->refreshOAuthToken($oauthConnection);
+                if (empty($accessToken)) {
+                    return null; // lastError already set by refreshOAuthToken
+                }
+            }
+        }
+
+        return $accessToken;
+    }
+
+    /**
+     * Refresh OAuth token using the OAuthAuthorizationService
+     *
+     * @param ExternalOAuthConnection $connection
+     * @return string|null New access token or null on failure
+     */
+    private function refreshOAuthToken($connection)
+    {
+        require_once('modules/ExternalOAuthConnection/services/OAuthAuthorizationService.php');
+
+        $service = new OAuthAuthorizationService();
+        $result = $service->refreshConnectionToken($connection);
+
+        if (!$result['success']) {
+            $this->lastError = 'OAuth token refresh failed: ' . ($result['message'] ?? 'Unknown error');
+            $GLOBALS['log']->error("InboundEmailClient: OAuth refresh failed - " . $this->lastError);
+            return null;
+        }
+
+        // Reload the connection to get the new token
+        $connection->retrieve($connection->id);
+        return $connection->access_token ?? null;
+    }
+
+    /**
+     * Build XOAUTH2 string for IMAP authentication
+     *
+     * @param string $username Email address
+     * @param string $accessToken OAuth access token
+     * @return string Base64-encoded XOAUTH2 string
+     */
+    private function buildXOAuth2String($username, $accessToken)
+    {
+        // XOAUTH2 format: user=<email>\x01auth=Bearer <token>\x01\x01
+        $authString = "user=" . $username . "\x01auth=Bearer " . $accessToken . "\x01\x01";
+        return base64_encode($authString);
+    }
+
+    /**
      * Connect to the email server
      *
      * @return bool True on success
@@ -41,35 +128,121 @@ class InboundEmailClient
             return false;
         }
 
-        $connectionString = $this->config->getConnectionString();
-        $username = $this->config->username;
-        $password = $this->config->getPassword();
+        $connectionString = $this->getConnectionString();
+        $username = $this->config->email_user ?? '';
+        $authType = $this->config->auth_type ?? 'basic';
 
         // Suppress warnings and handle errors manually
         $previousErrorHandler = set_error_handler(function($errno, $errstr) {
             $this->lastError = $errstr;
         });
 
-        $this->connection = @imap_open(
-            $connectionString,
-            $username,
-            $password,
-            0,
-            1,
-            ['DISABLE_AUTHENTICATOR' => 'GSSAPI']
-        );
+        if ($authType === 'oauth') {
+            // OAuth authentication using XOAUTH2
+            $accessToken = $this->getOAuthAccessToken();
+
+            if (!$accessToken) {
+                restore_error_handler();
+                return false;
+            }
+
+            // Build XOAUTH2 authentication string
+            $xoauth2 = $this->buildXOAuth2String($username, $accessToken);
+
+            // Connect with XOAUTH2
+            // Note: PHP's imap_open doesn't directly support XOAUTH2,
+            // so we use a workaround with custom authenticator
+            $this->connection = @imap_open(
+                $connectionString,
+                $username,
+                $xoauth2,
+                0,
+                1,
+                ['DISABLE_AUTHENTICATOR' => 'GSSAPI', 'DISABLE_AUTHENTICATOR' => 'PLAIN']
+            );
+
+            // If that fails, try alternative approach
+            if (!$this->connection) {
+                // Try with direct token as password (some servers accept this)
+                $this->connection = @imap_open(
+                    $connectionString,
+                    $username,
+                    $accessToken,
+                    0,
+                    1,
+                    ['DISABLE_AUTHENTICATOR' => 'GSSAPI']
+                );
+            }
+        } else {
+            // Basic password authentication
+            $password = $this->getPassword();
+
+            $this->connection = @imap_open(
+                $connectionString,
+                $username,
+                $password,
+                0,
+                1,
+                ['DISABLE_AUTHENTICATOR' => 'GSSAPI']
+            );
+        }
 
         restore_error_handler();
 
         if (!$this->connection) {
             $errors = imap_errors();
-            $this->lastError = $errors ? implode('; ', $errors) : 'Connection failed';
-            $GLOBALS['log']->error("InboundEmailClient: Connection failed - " . $this->lastError);
+            if ($errors) {
+                $this->lastError = implode('; ', $errors);
+            } elseif (empty($this->lastError)) {
+                $this->lastError = 'Connection failed';
+            }
+            $GLOBALS['log']->error("InboundEmailClient: Connection failed (auth: {$authType}) - " . $this->lastError);
             return false;
         }
 
-        $GLOBALS['log']->info("InboundEmailClient: Connected to " . $this->config->server);
+        $GLOBALS['log']->info("InboundEmailClient: Connected to " . ($this->config->server_url ?? 'unknown') . " using " . $authType);
         return true;
+    }
+
+    /**
+     * Get connection string for IMAP
+     *
+     * @return string IMAP connection string
+     */
+    private function getConnectionString()
+    {
+        $server = $this->config->server_url ?? '';
+        $port = $this->config->port ?? 993;
+        $folder = $this->config->mailbox ?? 'INBOX';
+        $ssl = $this->config->is_ssl ?? true;
+
+        $connStr = '{' . $server . ':' . $port;
+
+        if ($ssl) {
+            $connStr .= '/imap/ssl/novalidate-cert';
+        } else {
+            $connStr .= '/imap/notls';
+        }
+
+        $connStr .= '}' . $folder;
+
+        return $connStr;
+    }
+
+    /**
+     * Get decrypted password
+     *
+     * @return string Decrypted password
+     */
+    private function getPassword()
+    {
+        $encPassword = $this->config->email_password ?? '';
+
+        if (empty($encPassword)) {
+            return '';
+        }
+
+        return blowfishDecode(blowfishGetKey('encrypt_field'), $encPassword);
     }
 
     /**
@@ -87,6 +260,19 @@ class InboundEmailClient
             ];
         }
 
+        // For OAuth, check that we can get a token first
+        $authType = $this->config->auth_type ?? 'basic';
+        if ($authType === 'oauth') {
+            $accessToken = $this->getOAuthAccessToken();
+            if (!$accessToken) {
+                return [
+                    'success' => false,
+                    'message' => 'OAuth error: ' . $this->lastError,
+                    'details' => []
+                ];
+            }
+        }
+
         if (!$this->connect()) {
             return [
                 'success' => false,
@@ -97,7 +283,8 @@ class InboundEmailClient
 
         // Get mailbox info
         $check = imap_check($this->connection);
-        $status = imap_status($this->connection, $this->config->getConnectionString(), SA_ALL);
+        $connStr = $this->getConnectionString();
+        $status = @imap_status($this->connection, $connStr, SA_ALL);
 
         $details = [
             'mailbox' => $check->Mailbox ?? 'Unknown',
@@ -105,6 +292,7 @@ class InboundEmailClient
             'recent_messages' => $check->Recent ?? 0,
             'unseen_messages' => $status->unseen ?? 0,
             'uidnext' => $status->uidnext ?? 0,
+            'auth_type' => $authType,
         ];
 
         $this->disconnect();
@@ -499,8 +687,8 @@ class InboundEmailClient
             return [];
         }
 
-        $server = '{' . $this->config->server . ':' . ($this->config->port ?: 993);
-        if ($this->config->ssl) {
+        $server = '{' . ($this->config->server_url ?? '') . ':' . ($this->config->port ?: 993);
+        if ($this->config->is_ssl ?? true) {
             $server .= '/imap/ssl/novalidate-cert';
         }
         $server .= '}';
