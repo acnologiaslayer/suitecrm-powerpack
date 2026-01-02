@@ -383,6 +383,18 @@ if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legac
         fi
     fi
 
+    # Fix .htaccess to allow Twilio webhook access
+    # The default .htaccess blocks all PHP in /modules/ but webhooks need direct access
+    HTACCESS_FILE="/bitnami/suitecrm/public/legacy/.htaccess"
+    if [ -f "$HTACCESS_FILE" ]; then
+        # Check if the fix is already applied
+        if ! grep -q "TwilioIntegration" "$HTACCESS_FILE"; then
+            echo "Updating .htaccess to allow Twilio webhooks..."
+            # Replace the modules blocking rule with one that allows TwilioIntegration webhooks
+            sed -i 's|/+modules/+.*\.\(php|/+modules/+(?!TwilioIntegration/(sms_webhook\|recording_proxy\|twilio_webhook).php).*.(php|g' "$HTACCESS_FILE" 2>/dev/null || true
+        fi
+    fi
+
     # Re-run install script to update language files, module mappings, etc.
     echo "Updating module configurations..."
     /opt/bitnami/scripts/suitecrm/install-modules.sh 2>/dev/null || true
