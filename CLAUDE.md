@@ -443,7 +443,13 @@ docker push mahir009/suitecrm-powerpack:latest
 - **v3.1.13** - Messenger-style compose bar in timeline modal
 - **v3.1.12** - Add communication action buttons (Call, SMS, Email) to timeline
 - **v3.1.11** - Unified timeline with SMS, calls, and emails from all sources
-- **v3.1.10** - Log calls to ALL matching leads with same phone number
+- **v3.1.10** - Fix InboundEmail OAuth and timeline email display:
+  - Fixed InboundEmail module to use core `inbound_email` table instead of custom table
+  - Added missing helper methods: `setStatus()`, `updateLastPoll()`, `getStoredOptions()`
+  - Fixed OAuth connection loading in InboundEmailClient using `newBean()->retrieve()` pattern
+  - Fixed LeadJourney timeline email query: use `date_sent_received` column (not `date_sent`)
+  - Added `emails_text` table join for email content in timeline
+  - Fixed SQL string quoting with `$db->quoted()` for proper query matching
 - **v3.1.9** - Include caller/recipient names in call logs and recordings
 - **v2.5.28** - Fix production upgrade issues:
   - Fix JS files copied to wrong location (now `/bitnami/suitecrm/public/dist/`)
