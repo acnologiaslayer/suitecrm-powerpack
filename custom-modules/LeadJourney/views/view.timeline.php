@@ -336,16 +336,12 @@ class LeadJourneyViewTimeline extends SugarView {
                         <div class="value"><?php echo count($timeline); ?></div>
                     </div>
                     <div class="stat-box">
-                        <div class="label">Calls</div>
-                        <div class="value"><?php echo $this->countByType($timeline, ['call', 'inbound_call', 'outbound_call', 'call_inbound', 'call_outbound']); ?></div>
+                        <div class="label">Calls & SMS</div>
+                        <div class="value"><?php echo $this->countByType($timeline, ['call', 'inbound_call', 'outbound_call', 'call_inbound', 'call_outbound', 'sms', 'inbound_sms', 'outbound_sms', 'sms_inbound', 'sms_outbound', 'voicemail']); ?></div>
                     </div>
                     <div class="stat-box">
                         <div class="label">Emails</div>
                         <div class="value"><?php echo $this->countByType($timeline, ['email', 'inbound_email', 'email_inbound']); ?></div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="label">SMS</div>
-                        <div class="value"><?php echo $this->countByType($timeline, ['sms', 'inbound_sms', 'outbound_sms', 'sms_inbound', 'sms_outbound']); ?></div>
                     </div>
                 </div>
             </div>
@@ -361,9 +357,8 @@ class LeadJourneyViewTimeline extends SugarView {
                 </div>
                 <div class="filter-buttons">
                     <button class="filter-btn active" data-filter="all">All</button>
-                    <button class="filter-btn" data-filter="call">Calls</button>
+                    <button class="filter-btn" data-filter="calls_sms">Calls & SMS</button>
                     <button class="filter-btn" data-filter="email">Emails</button>
-                    <button class="filter-btn" data-filter="sms">SMS</button>
                     <button class="filter-btn" data-filter="meeting">Meetings</button>
                     <button class="filter-btn" data-filter="site_visit">Site Visits</button>
                 </div>
@@ -572,9 +567,8 @@ class LeadJourneyViewTimeline extends SugarView {
                     document.querySelectorAll('.timeline-item').forEach(item => {
                         const itemType = item.dataset.type;
                         if (filter === 'all' || itemType === filter ||
-                            (filter === 'call' && ['call', 'inbound_call', 'outbound_call', 'voicemail'].includes(itemType)) ||
-                            (filter === 'email' && ['email', 'inbound_email'].includes(itemType)) ||
-                            (filter === 'sms' && ['sms', 'inbound_sms', 'outbound_sms'].includes(itemType))) {
+                            (filter === 'calls_sms' && ['call', 'sms', 'voicemail'].includes(itemType)) ||
+                            (filter === 'email' && ['email'].includes(itemType))) {
                             item.style.display = 'block';
                         } else {
                             item.style.display = 'none';
