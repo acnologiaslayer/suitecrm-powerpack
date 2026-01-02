@@ -444,42 +444,46 @@ MODULE_NAME_MAP="/bitnami/suitecrm/public/legacy/include/portability/module_name
 if [ -f "$MODULE_NAME_MAP" ]; then
     # Check if ALL modules are added (check for last one to ensure complete)
     if ! grep -q "NotificationHub" "$MODULE_NAME_MAP"; then
-        cat >> "$MODULE_NAME_MAP" << 'MAPEOF'
+        # Remove the if (file_exists...) block at end of file so we can insert before it
+        sed -i '/^if (file_exists.*module_name_map.ext.php/,$d' "$MODULE_NAME_MAP"
 
-// PowerPack Modules
-$module_name_map["FunnelDashboard"] = [
-    "frontend" => "funnel-dashboard",
-    "core" => "FunnelDashboard"
+        # Append PowerPack modules in correct array format, then re-add the if block
+        cat >> "$MODULE_NAME_MAP" << 'MAPEOF'
+    // PowerPack Modules
+    "FunnelDashboard" => [
+        "frontend" => "funnel-dashboard",
+        "core" => "FunnelDashboard"
+    ],
+    "SalesTargets" => [
+        "frontend" => "sales-targets",
+        "core" => "SalesTargets"
+    ],
+    "Packages" => [
+        "frontend" => "packages",
+        "core" => "Packages"
+    ],
+    "TwilioIntegration" => [
+        "frontend" => "twilio-integration",
+        "core" => "TwilioIntegration"
+    ],
+    "LeadJourney" => [
+        "frontend" => "lead-journey",
+        "core" => "LeadJourney"
+    ],
+    "Webhooks" => [
+        "frontend" => "webhooks",
+        "core" => "Webhooks"
+    ],
+    "NotificationHub" => [
+        "frontend" => "notification-hub",
+        "core" => "NotificationHub"
+    ],
 ];
-$module_name_map["SalesTargets"] = [
-    "frontend" => "sales-targets",
-    "core" => "SalesTargets"
-];
-$module_name_map["Packages"] = [
-    "frontend" => "packages",
-    "core" => "Packages"
-];
-$module_name_map["TwilioIntegration"] = [
-    "frontend" => "twilio-integration",
-    "core" => "TwilioIntegration"
-];
-$module_name_map["LeadJourney"] = [
-    "frontend" => "lead-journey",
-    "core" => "LeadJourney"
-];
-$module_name_map["Webhooks"] = [
-    "frontend" => "webhooks",
-    "core" => "Webhooks"
-];
-$module_name_map["NotificationHub"] = [
-    "frontend" => "notification-hub",
-    "core" => "NotificationHub"
-];
-// VerbacallIntegration not added to module_name_map - it's Lead-specific only
-$module_name_map["InboundEmail"] = [
-    "frontend" => "inbound-email",
-    "core" => "InboundEmail"
-];
+
+if (file_exists('custom/application/Ext/ModuleNameMap/module_name_map.ext.php')) {
+    /* @noinspection PhpIncludeInspection */
+    include('custom/application/Ext/ModuleNameMap/module_name_map.ext.php');
+}
 MAPEOF
         echo "  ✓ Module name mappings added"
     else
