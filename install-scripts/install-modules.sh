@@ -363,8 +363,8 @@ chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/
 echo "Adding modules to SuiteCRM 8 navigation..."
 MODULE_ROUTING_FILE="/bitnami/suitecrm/config/services/module/module_routing.yaml"
 if [ -f "$MODULE_ROUTING_FILE" ]; then
-    # Check if our modules are already added
-    if ! grep -q "funnel-dashboard:" "$MODULE_ROUTING_FILE"; then
+    # Check if ALL our modules are added (check for last one to ensure complete)
+    if ! grep -q "notification-hub:" "$MODULE_ROUTING_FILE"; then
         # Backup original file
         cp "$MODULE_ROUTING_FILE" "${MODULE_ROUTING_FILE}.backup"
         
@@ -442,7 +442,8 @@ fi
 # Add PowerPack modules to SuiteCRM 8 module name map (required for frontend/legacy name mapping)
 MODULE_NAME_MAP="/bitnami/suitecrm/public/legacy/include/portability/module_name_map.php"
 if [ -f "$MODULE_NAME_MAP" ]; then
-    if ! grep -q "FunnelDashboard" "$MODULE_NAME_MAP"; then
+    # Check if ALL modules are added (check for last one to ensure complete)
+    if ! grep -q "NotificationHub" "$MODULE_NAME_MAP"; then
         cat >> "$MODULE_NAME_MAP" << 'MAPEOF'
 
 // PowerPack Modules
