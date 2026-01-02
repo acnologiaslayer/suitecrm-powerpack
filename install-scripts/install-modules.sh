@@ -1170,21 +1170,21 @@ else
     echo "  ⚠ SMS webhook source not found"
 fi
 
-# Install Notification webhook for WebSocket token
+# Install Notification token endpoint for WebSocket authentication
 echo ""
-echo "Installing Notification webhook..."
-if [ -f "/opt/bitnami/suitecrm/modules/NotificationHub/notification_webhook.php" ]; then
-    cp /opt/bitnami/suitecrm/modules/NotificationHub/notification_webhook.php /bitnami/suitecrm/public/legacy/notification_webhook.php
-    chown daemon:daemon /bitnami/suitecrm/public/legacy/notification_webhook.php
-    chmod 644 /bitnami/suitecrm/public/legacy/notification_webhook.php
-    echo "  ✓ Notification webhook installed at /legacy/notification_webhook.php"
-elif [ -f "/bitnami/suitecrm/modules/NotificationHub/notification_webhook.php" ]; then
-    cp /bitnami/suitecrm/modules/NotificationHub/notification_webhook.php /bitnami/suitecrm/public/legacy/notification_webhook.php
-    chown daemon:daemon /bitnami/suitecrm/public/legacy/notification_webhook.php
-    chmod 644 /bitnami/suitecrm/public/legacy/notification_webhook.php
-    echo "  ✓ Notification webhook installed at /legacy/notification_webhook.php"
+echo "Installing Notification token endpoint..."
+if [ -f "/opt/bitnami/suitecrm/modules/NotificationHub/notification_token.php" ]; then
+    cp /opt/bitnami/suitecrm/modules/NotificationHub/notification_token.php /bitnami/suitecrm/public/legacy/notification_token.php
+    chown daemon:daemon /bitnami/suitecrm/public/legacy/notification_token.php
+    chmod 644 /bitnami/suitecrm/public/legacy/notification_token.php
+    echo "  ✓ Notification token endpoint installed at /legacy/notification_token.php"
+elif [ -f "/bitnami/suitecrm/modules/NotificationHub/notification_token.php" ]; then
+    cp /bitnami/suitecrm/modules/NotificationHub/notification_token.php /bitnami/suitecrm/public/legacy/notification_token.php
+    chown daemon:daemon /bitnami/suitecrm/public/legacy/notification_token.php
+    chmod 644 /bitnami/suitecrm/public/legacy/notification_token.php
+    echo "  ✓ Notification token endpoint installed at /legacy/notification_token.php"
 else
-    echo "  ⚠ Notification webhook source not found"
+    echo "  ⚠ Notification token endpoint source not found"
 fi
 
 # Clear all caches
