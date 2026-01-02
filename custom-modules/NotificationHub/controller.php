@@ -42,28 +42,45 @@ class NotificationHubController extends SugarController
     {
         global $current_user;
 
+        // Prevent view from loading - this is a pure JSON API endpoint
+        $this->view = 'ajax';
+
+        // Clean any previous output
+        if (ob_get_level()) {
+            ob_clean();
+        }
+
         header('Content-Type: application/json');
+        header('Cache-Control: no-cache, must-revalidate');
 
         // Check if user is logged in
         if (empty($current_user) || empty($current_user->id)) {
             echo json_encode([
                 'success' => false,
-                'error' => 'Not authenticated'
+                'error' => 'Not authenticated. Please log in.'
             ]);
-            return;
+            exit;
         }
 
-        // Load security class
-        require_once('modules/Webhooks/NotificationSecurity.php');
+        try {
+            // Load security class
+            require_once('modules/Webhooks/NotificationSecurity.php');
 
-        // Generate JWT token
-        $token = NotificationSecurity::createJwtToken($current_user->id, 3600);
+            // Generate JWT token
+            $token = NotificationSecurity::createJwtToken($current_user->id, 3600);
 
-        echo json_encode([
-            'success' => true,
-            'token' => $token,
-            'expires_in' => 3600
-        ]);
+            echo json_encode([
+                'success' => true,
+                'token' => $token,
+                'expires_in' => 3600
+            ]);
+        } catch (Exception $e) {
+            echo json_encode([
+                'success' => false,
+                'error' => 'Token generation failed: ' . $e->getMessage()
+            ]);
+        }
+        exit;
     }
 
     /**

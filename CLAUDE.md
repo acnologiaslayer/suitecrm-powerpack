@@ -4,7 +4,7 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v3.1.16
+**Current Version**: v3.1.17
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
 
 This is a Docker-based SuiteCRM extension with eight custom modules for sales operations:
@@ -435,6 +435,13 @@ docker push mahir009/suitecrm-powerpack:latest
 
 ## Version History (Recent)
 
+- **v3.1.17** - Fix NotifyWS auth token endpoint:
+  - Fixed `action_getToken()` in NotificationHub controller returning mixed output
+  - Added `exit;` after JSON response to prevent extra output
+  - Added output buffer cleanup (`ob_clean()`) for clean JSON responses
+  - Set `$this->view = 'ajax'` to prevent view loading
+  - Added try/catch for proper error handling
+  - Fixes WebSocket authentication token parsing errors
 - **v3.1.16** - Fix JS 404 errors for custom scripts:
   - Fixed script injection paths in docker-entrypoint.sh and install-modules.sh
   - Scripts now correctly reference `dist/` prefix (e.g., `src="dist/twilio-click-to-call.js"`)
