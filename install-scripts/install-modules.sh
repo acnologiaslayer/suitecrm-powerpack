@@ -1088,7 +1088,7 @@ if [ -f "/opt/bitnami/suitecrm/dist/twilio-click-to-call.js" ]; then
     # Inject script tag into index.html if not already present
     if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
         if ! grep -q "twilio-click-to-call.js" /bitnami/suitecrm/public/dist/index.html; then
-            sed -i 's|</body>|<script src="twilio-click-to-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            sed -i 's|</body>|<script src="dist/twilio-click-to-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             echo "  ✓ Click-to-call script injected into Angular UI"
         else
             echo "  Click-to-call script already present"
@@ -1102,7 +1102,7 @@ elif [ -f "/bitnami/suitecrm/modules/TwilioIntegration/click-to-call.js" ]; then
     
     if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
         if ! grep -q "twilio-click-to-call.js" /bitnami/suitecrm/public/dist/index.html; then
-            sed -i 's|</body>|<script src="twilio-click-to-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            sed -i 's|</body>|<script src="dist/twilio-click-to-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             echo "  ✓ Click-to-call script injected (from module)"
         fi
     fi
@@ -1119,7 +1119,7 @@ if [ -f "/opt/bitnami/suitecrm/dist/verbacall-integration.js" ]; then
     # Inject script tag into index.html if not already present
     if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
         if ! grep -q "verbacall-integration.js" /bitnami/suitecrm/public/dist/index.html; then
-            sed -i 's|</body>|<script src="verbacall-integration.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            sed -i 's|</body>|<script src="dist/verbacall-integration.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             echo "  ✓ Verbacall integration script injected into Angular UI"
         else
             echo "  Verbacall integration script already present"
@@ -1140,7 +1140,7 @@ if [ -f "/opt/bitnami/suitecrm/dist/twilio-incoming-call.js" ]; then
     # Inject script tag into index.html if not already present
     if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
         if ! grep -q "twilio-incoming-call.js" /bitnami/suitecrm/public/dist/index.html; then
-            sed -i 's|</body>|<script src="twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+            sed -i 's|</body>|<script src="dist/twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             echo "  ✓ Twilio incoming call script injected into Angular UI"
         else
             echo "  Twilio incoming call script already present"

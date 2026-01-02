@@ -4,7 +4,7 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v3.1.14
+**Current Version**: v3.1.16
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
 
 This is a Docker-based SuiteCRM extension with eight custom modules for sales operations:
@@ -435,7 +435,17 @@ docker push mahir009/suitecrm-powerpack:latest
 
 ## Version History (Recent)
 
-- **v3.1.14** - Fix Twilio call direction detection for browser outgoing calls:
+- **v3.1.16** - Fix JS 404 errors for custom scripts:
+  - Fixed script injection paths in docker-entrypoint.sh and install-modules.sh
+  - Scripts now correctly reference `dist/` prefix (e.g., `src="dist/twilio-click-to-call.js"`)
+  - Added missing `recording_url` and `thread_id` columns to `lead_journey` table
+  - Fixes Timeline API 500 error
+- **v3.1.15** - Add Webhooks module submenu and views:
+  - Added Menu.php for Webhooks module (was missing)
+  - Created view.index.php for API Keys management
+  - Created view.docs.php for API documentation
+- **v3.1.14** - Fix SMS filter and Twilio call direction detection:
+  - Fixed SMS filter in Angular timeline to include `inbound_sms` type (was only matching `sms_inbound`)
   - Fixed bug where browser outgoing calls were incorrectly detected as incoming
   - Twilio marks browser-to-TwiML-App calls as Direction=inbound
   - Detection now checks From field FIRST (client:xxx = outgoing, phone = incoming)

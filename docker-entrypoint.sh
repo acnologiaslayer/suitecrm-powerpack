@@ -51,7 +51,7 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "twilio-click-to-call.js" /bitnami/suitecrm/public/dist/index.html; then
                 echo "Injecting click-to-call script into Angular UI..."
-                sed -i 's|</body>|<script src="twilio-click-to-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/twilio-click-to-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             fi
         fi
     fi
@@ -81,7 +81,7 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "notification-ws.js" /bitnami/suitecrm/public/dist/index.html; then
                 echo "Injecting notification WebSocket client into Angular UI..."
-                sed -i 's|</body>|<script src="notification-ws.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/notification-ws.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             fi
         fi
     fi
@@ -97,7 +97,7 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "verbacall-integration.js" /bitnami/suitecrm/public/dist/index.html; then
                 echo "Injecting Verbacall integration script into Angular UI..."
-                sed -i 's|</body>|<script src="verbacall-integration.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/verbacall-integration.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             fi
         fi
     fi
@@ -114,7 +114,7 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "leadjourney-buttons.js" /bitnami/suitecrm/public/dist/index.html; then
                 echo "Injecting LeadJourney buttons script into Angular UI..."
-                sed -i 's|</body>|<script src="leadjourney-buttons.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/leadjourney-buttons.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             fi
         fi
     fi
@@ -130,7 +130,7 @@ if [ ! -f "/bitnami/suitecrm/public/index.php" ]; then
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "twilio-incoming-call.js" /bitnami/suitecrm/public/dist/index.html; then
                 echo "Injecting Twilio incoming call script into Angular UI..."
-                sed -i 's|</body>|<script src="twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
             fi
         fi
     fi
@@ -306,7 +306,7 @@ if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legac
         # Inject script tag into index.html if not already present
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "twilio-click-to-call.js" /bitnami/suitecrm/public/dist/index.html; then
-                sed -i 's|</body>|<script src="twilio-click-to-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/twilio-click-to-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
                 echo "Twilio click-to-call script injected into Angular UI"
             fi
         fi
@@ -334,7 +334,7 @@ if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legac
         # Inject script tag into index.html if not already present
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "notification-ws.js" /bitnami/suitecrm/public/dist/index.html; then
-                sed -i 's|</body>|<script src="notification-ws.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/notification-ws.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
                 echo "Notification WebSocket script injected into Angular UI"
             fi
         fi
@@ -348,7 +348,7 @@ if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legac
         # Inject script tag into index.html if not already present
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "verbacall-integration.js" /bitnami/suitecrm/public/dist/index.html; then
-                sed -i 's|</body>|<script src="verbacall-integration.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/verbacall-integration.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
                 echo "Verbacall integration script injected into Angular UI"
             fi
         fi
@@ -363,7 +363,7 @@ if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legac
         # Inject script tag into index.html if not already present
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "leadjourney-buttons.js" /bitnami/suitecrm/public/dist/index.html; then
-                sed -i 's|</body>|<script src="leadjourney-buttons.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/leadjourney-buttons.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
                 echo "LeadJourney buttons script injected into Angular UI"
             fi
         fi
@@ -377,7 +377,7 @@ if [ -f "/bitnami/suitecrm/config.php" ] || [ -f "/bitnami/suitecrm/public/legac
         # Inject script tag into index.html if not already present
         if [ -f "/bitnami/suitecrm/public/dist/index.html" ]; then
             if ! grep -q "twilio-incoming-call.js" /bitnami/suitecrm/public/dist/index.html; then
-                sed -i 's|</body>|<script src="twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
+                sed -i 's|</body>|<script src="dist/twilio-incoming-call.js"></script>\n</body>|' /bitnami/suitecrm/public/dist/index.html
                 echo "Twilio incoming call script injected into Angular UI"
             fi
         fi

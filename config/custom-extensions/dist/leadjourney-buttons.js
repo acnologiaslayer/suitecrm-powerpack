@@ -1,7 +1,7 @@
 /**
  * LeadJourney Buttons for SuiteCRM 8 Angular Frontend
  * Injects Timeline, Recordings buttons; Messenger-style compose bar in timeline modal
- * v2.3.4 - Rich messenger bar with text input, channel selector, send button
+ * v2.3.5 - Fix SMS filter to include inbound_sms type naming
  */
 (function() {
     'use strict';
@@ -20,13 +20,14 @@
     let currentModule = null;    // Current module for modal actions
     let currentRecordId = null;  // Current record ID for modal actions
 
-    // Type categories for filtering (includes legacy types without direction suffix)
+    // Type categories for filtering (includes legacy types and both naming conventions)
     // Note: verbacall_signup_sent and verbacall_payment_email_sent are also emails
+    // Supports both direction_type (call_inbound) and type_direction (inbound_sms) naming
     const TYPE_CATEGORIES = {
         all: { label: 'All', types: null },
-        calls: { label: 'Calls', types: ['call_outbound', 'call_inbound', 'call', 'voicemail'] },
-        sms: { label: 'SMS', types: ['sms_outbound', 'sms_inbound', 'sms'] },
-        emails: { label: 'Emails', types: ['email_outbound', 'email_inbound', 'email', 'verbacall_signup_sent', 'verbacall_payment_email_sent'] },
+        calls: { label: 'Calls', types: ['call_outbound', 'call_inbound', 'outbound_call', 'inbound_call', 'call', 'voicemail'] },
+        sms: { label: 'SMS', types: ['sms_outbound', 'sms_inbound', 'outbound_sms', 'inbound_sms', 'sms'] },
+        emails: { label: 'Emails', types: ['email_outbound', 'email_inbound', 'outbound_email', 'inbound_email', 'email', 'verbacall_signup_sent', 'verbacall_payment_email_sent'] },
         verbacall: { label: 'Verbacall', types: ['verbacall_signup_sent', 'verbacall_discount_offer', 'verbacall_payment_email_sent'] },
         other: { label: 'Other', types: ['note', 'meeting', 'task'] }
     };
