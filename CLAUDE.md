@@ -4,7 +4,7 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v3.1.17
+**Current Version**: v3.1.18
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
 
 This is a Docker-based SuiteCRM extension with eight custom modules for sales operations:
@@ -435,6 +435,11 @@ docker push mahir009/suitecrm-powerpack:latest
 
 ## Version History (Recent)
 
+- **v3.1.18** - Fix NotifyWS auth by creating standalone webhook endpoint:
+  - Created `notification_webhook.php` standalone entry point (bypasses SuiteCRM auth redirect)
+  - Updated `notification-ws.js` to use new `/legacy/notification_webhook.php?action=token` endpoint
+  - Added webhook file copy to install-modules.sh
+  - Fixes WebSocket authentication when SuiteCRM's framework redirects before controller runs
 - **v3.1.17** - Fix NotifyWS auth token endpoint:
   - Fixed `action_getToken()` in NotificationHub controller returning mixed output
   - Added `exit;` after JSON response to prevent extra output

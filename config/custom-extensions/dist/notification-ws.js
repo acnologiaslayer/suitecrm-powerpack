@@ -20,7 +20,7 @@
         wsUrl: window.POWERPACK_WS_URL ||
                (window.location.protocol === 'https:' ? 'wss://' : 'ws://') +
                window.location.hostname + ':3001',
-        tokenEndpoint: 'legacy/index.php?module=NotificationHub&action=getToken&to_json=1',
+        tokenEndpoint: 'legacy/notification_webhook.php?action=token',
         reconnectDelay: 3000,
         maxReconnectDelay: 30000,
         toastDuration: 10000,

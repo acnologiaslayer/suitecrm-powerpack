@@ -1170,6 +1170,23 @@ else
     echo "  ⚠ SMS webhook source not found"
 fi
 
+# Install Notification webhook for WebSocket token
+echo ""
+echo "Installing Notification webhook..."
+if [ -f "/opt/bitnami/suitecrm/modules/NotificationHub/notification_webhook.php" ]; then
+    cp /opt/bitnami/suitecrm/modules/NotificationHub/notification_webhook.php /bitnami/suitecrm/public/legacy/notification_webhook.php
+    chown daemon:daemon /bitnami/suitecrm/public/legacy/notification_webhook.php
+    chmod 644 /bitnami/suitecrm/public/legacy/notification_webhook.php
+    echo "  ✓ Notification webhook installed at /legacy/notification_webhook.php"
+elif [ -f "/bitnami/suitecrm/modules/NotificationHub/notification_webhook.php" ]; then
+    cp /bitnami/suitecrm/modules/NotificationHub/notification_webhook.php /bitnami/suitecrm/public/legacy/notification_webhook.php
+    chown daemon:daemon /bitnami/suitecrm/public/legacy/notification_webhook.php
+    chmod 644 /bitnami/suitecrm/public/legacy/notification_webhook.php
+    echo "  ✓ Notification webhook installed at /legacy/notification_webhook.php"
+else
+    echo "  ⚠ Notification webhook source not found"
+fi
+
 # Clear all caches
 echo ""
 echo "Clearing caches..."
