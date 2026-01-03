@@ -17,9 +17,10 @@
     // Configuration
     const CONFIG = {
         // WebSocket URL - auto-detect from current host or use configured URL
+        // Uses port 3000 for nginx SSL proxy -> internal port 3001
         wsUrl: window.POWERPACK_WS_URL ||
                (window.location.protocol === 'https:' ? 'wss://' : 'ws://') +
-               window.location.hostname + ':3001',
+               window.location.hostname + ':3000',
         tokenEndpoint: 'legacy/notification_token.php',
         reconnectDelay: 3000,
         maxReconnectDelay: 30000,
