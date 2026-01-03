@@ -1187,6 +1187,24 @@ else
     echo "  ⚠ Notification token endpoint source not found"
 fi
 
+# Add notification_jwt_secret to config.php for WebSocket authentication
+echo ""
+echo "Configuring JWT secret for WebSocket notifications..."
+CONFIG_FILE="/bitnami/suitecrm/public/legacy/config.php"
+if [ -f "$CONFIG_FILE" ]; then
+    if ! grep -q "notification_jwt_secret" "$CONFIG_FILE"; then
+        # Get JWT secret from environment or use default
+        JWT_SECRET="${NOTIFICATION_JWT_SECRET:-default-secret-change-me}"
+        # Add the secret to config.php before the closing );
+        sed -i "s/);$/  'notification_jwt_secret' => '$JWT_SECRET',\n);/" "$CONFIG_FILE"
+        echo "  ✓ JWT secret added to config.php"
+    else
+        echo "  JWT secret already configured in config.php"
+    fi
+else
+    echo "  ⚠ config.php not found - JWT secret not configured"
+fi
+
 # Clear all caches
 echo ""
 echo "Clearing caches..."
