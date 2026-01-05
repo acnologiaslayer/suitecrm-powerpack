@@ -1187,6 +1187,23 @@ else
     echo "  ⚠ Notification token endpoint source not found"
 fi
 
+# Install LeadJourney API endpoint
+echo ""
+echo "Installing LeadJourney API endpoint..."
+if [ -f "/opt/bitnami/suitecrm/modules/LeadJourney/leadjourney_api.php" ]; then
+    cp /opt/bitnami/suitecrm/modules/LeadJourney/leadjourney_api.php /bitnami/suitecrm/public/legacy/leadjourney_api.php
+    chown daemon:daemon /bitnami/suitecrm/public/legacy/leadjourney_api.php
+    chmod 644 /bitnami/suitecrm/public/legacy/leadjourney_api.php
+    echo "  ✓ LeadJourney API installed at /legacy/leadjourney_api.php"
+elif [ -f "/bitnami/suitecrm/modules/LeadJourney/leadjourney_api.php" ]; then
+    cp /bitnami/suitecrm/modules/LeadJourney/leadjourney_api.php /bitnami/suitecrm/public/legacy/leadjourney_api.php
+    chown daemon:daemon /bitnami/suitecrm/public/legacy/leadjourney_api.php
+    chmod 644 /bitnami/suitecrm/public/legacy/leadjourney_api.php
+    echo "  ✓ LeadJourney API installed at /legacy/leadjourney_api.php"
+else
+    echo "  ⚠ LeadJourney API source not found"
+fi
+
 # Add notification_jwt_secret to config.php for WebSocket authentication
 echo ""
 echo "Configuring JWT secret for WebSocket notifications..."
