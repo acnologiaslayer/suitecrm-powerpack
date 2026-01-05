@@ -597,11 +597,6 @@ CREATE TABLE IF NOT EXISTS lead_journey (
     INDEX idx_thread_id (thread_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Add columns if table exists (for upgrades)
-ALTER TABLE lead_journey ADD COLUMN IF NOT EXISTS assigned_user_id VARCHAR(36);
-ALTER TABLE lead_journey ADD COLUMN IF NOT EXISTS thread_id VARCHAR(64);
-ALTER TABLE lead_journey ADD COLUMN IF NOT EXISTS recording_url VARCHAR(500);
-
 -- Funnel Dashboard table
 CREATE TABLE IF NOT EXISTS funnel_dashboard (
     id VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -1220,6 +1215,51 @@ if [ -f "$CONFIG_FILE" ]; then
     fi
 else
     echo "  ⚠ config.php not found - JWT secret not configured"
+fi
+
+# Configure email settings from environment variables
+echo ""
+echo "Configuring email settings..."
+if [ -f "$CONFIG_FILE" ]; then
+    # Outbound SMTP settings
+    if [ -n "$SUITECRM_OUTBOUND_SMTP_HOST" ]; then
+        if ! grep -q "'email_smtp_server'" "$CONFIG_FILE"; then
+            sed -i "s/);$/  'email_smtp_server' => '${SUITECRM_OUTBOUND_SMTP_HOST}',\n);/" "$CONFIG_FILE"
+            echo "  ✓ SMTP host configured"
+        fi
+    fi
+    if [ -n "$SUITECRM_OUTBOUND_SMTP_PORT" ]; then
+        if ! grep -q "'email_smtp_port'" "$CONFIG_FILE"; then
+            sed -i "s/);$/  'email_smtp_port' => '${SUITECRM_OUTBOUND_SMTP_PORT}',\n);/" "$CONFIG_FILE"
+            echo "  ✓ SMTP port configured"
+        fi
+    fi
+    if [ -n "$SUITECRM_OUTBOUND_SMTP_USER" ]; then
+        if ! grep -q "'email_smtp_user'" "$CONFIG_FILE"; then
+            sed -i "s/);$/  'email_smtp_user' => '${SUITECRM_OUTBOUND_SMTP_USER}',\n);/" "$CONFIG_FILE"
+            echo "  ✓ SMTP user configured"
+        fi
+    fi
+    if [ -n "$SUITECRM_OUTBOUND_SMTP_PASSWORD" ]; then
+        if ! grep -q "'email_smtp_password'" "$CONFIG_FILE"; then
+            sed -i "s/);$/  'email_smtp_password' => '${SUITECRM_OUTBOUND_SMTP_PASSWORD}',\n);/" "$CONFIG_FILE"
+            echo "  ✓ SMTP password configured"
+        fi
+    fi
+    if [ "$SUITECRM_OUTBOUND_SMTP_AUTH" = "true" ]; then
+        if ! grep -q "'email_smtp_auth'" "$CONFIG_FILE"; then
+            sed -i "s/);$/  'email_smtp_auth' => true,\n);/" "$CONFIG_FILE"
+            echo "  ✓ SMTP auth enabled"
+        fi
+    fi
+    if [ -n "$SUITECRM_OUTBOUND_SMTP_SECURITY" ]; then
+        if ! grep -q "'email_smtp_security'" "$CONFIG_FILE"; then
+            sed -i "s/);$/  'email_smtp_security' => '${SUITECRM_OUTBOUND_SMTP_SECURITY}',\n);/" "$CONFIG_FILE"
+            echo "  ✓ SMTP security configured"
+        fi
+    fi
+else
+    echo "  ⚠ config.php not found - email not configured"
 fi
 
 # Clear all caches
