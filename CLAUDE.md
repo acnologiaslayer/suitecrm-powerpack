@@ -4,10 +4,10 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v3.1.19
+**Current Version**: v3.2.0
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
 
-This is a Docker-based SuiteCRM extension with eight custom modules for sales operations:
+This is a Docker-based SuiteCRM extension with seven custom modules for sales operations:
 
 1. **TwilioIntegration** - Click-to-call, SMS, auto-logging
 2. **LeadJourney** - Customer journey timeline tracking
@@ -17,6 +17,64 @@ This is a Docker-based SuiteCRM extension with eight custom modules for sales op
 6. **Webhooks** - Notification webhook API for external integrations
 7. **NotificationHub** - Real-time WebSocket notification system
 8. **VerbacallIntegration** - Signup and payment link generation for Leads
+
+> **Note**: Custom InboundEmail module was removed in v3.2.0 - use native SuiteCRM InboundEmail + OAuth instead.
+
+---
+
+## Email Integration (Office 365 / OAuth)
+
+### Architecture (v3.2.0+)
+
+Email sync now uses **native SuiteCRM InboundEmail** with OAuth, enhanced by a custom hook:
+
+```
+Office 365 Mailbox (or Gmail)
+       │
+       │ IMAP + OAuth2 (native SuiteCRM)
+       ▼
+SuiteCRM Native InboundEmail + Scheduler
+       │
+       │ after_save hook
+       ▼
+EmailLinkingService (custom/modules/EmailLinkingService.php)
+  • Auto-links inbound emails to Leads/Contacts by email match
+  • Logs to LeadJourney timeline
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `custom-modules/Extensions/modules/EmailLinkingService.php` | Auto-links emails to Leads/Contacts, logs to LeadJourney |
+| `install-modules.sh` (creates hooks) | Installs `after_save` hook for Emails module |
+
+### Office 365 OAuth Setup
+
+1. **Register Azure AD App** at [portal.azure.com](https://portal.azure.com):
+   - Redirect URI: `https://your-domain.com/legacy/index.php?module=ExternalOAuthConnection&action=callback`
+   - API Permissions: `IMAP.AccessAsUser.All`, `Mail.Read`, `offline_access`, `User.Read`
+
+2. **Environment Variables** (in `.env.local`):
+   ```bash
+   AZURE_CLIENT_ID=your-client-id
+   AZURE_CLIENT_SECRET=your-client-secret
+   AZURE_TENANT_ID=your-tenant-id
+   ```
+
+3. **SuiteCRM Configuration**:
+   - Admin → Email → External OAuth Providers → Create "Microsoft 365"
+   - Admin → Email → External OAuth Connections → Authorize
+   - Admin → Email → Inbound Email → Create with OAuth connection
+   - Admin → Schedulers → Enable "Check Inbound Mailboxes"
+
+### OAuth Provider Settings
+
+| Field | Value |
+|-------|-------|
+| Authorize URL | `https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/authorize` |
+| Token URL | `https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token` |
+| Scope | `https://outlook.office365.com/IMAP.AccessAsUser.All offline_access` |
 
 ---
 
@@ -435,6 +493,14 @@ docker push mahir009/suitecrm-powerpack:latest
 
 ## Version History (Recent)
 
+- **v3.2.0** - Email architecture refactoring (January 2026):
+  - **BREAKING**: Removed custom `InboundEmail` module - use native SuiteCRM InboundEmail + OAuth
+  - Created `EmailLinkingService` for auto-linking emails to Leads/Contacts via `after_save` hook
+  - Auto-logs inbound emails to LeadJourney timeline
+  - Removed SES webhook (view.ses_email.php) - not needed with IMAP sync
+  - Added Azure OAuth environment variables: `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`
+  - Updated Dockerfile, install-modules.sh, docker-compose.yml
+  - Simplified email setup: just configure OAuth in SuiteCRM Admin panel
 - **v3.1.19** - Fix NotifyWS auth with standalone token endpoint:
   - Renamed to `notification_token.php` to avoid conflict with existing notification_webhook.php
   - Updated `notification-ws.js` to use `/legacy/notification_token.php` endpoint
@@ -527,3 +593,5 @@ docker exec suitecrm-test php /bitnami/suitecrm/public/legacy/bin/console suitec
 8. **Module source is `/opt/bitnami/`** - During upgrades, modules are sourced from image at `/opt/bitnami/suitecrm/modules/`
 9. **External DB requires host network** - Use `network_mode: host` for managed databases (DigitalOcean, AWS RDS)
 10. **WebSocket runs on port 3001** - Separate SSL nginx block needed for WSS
+11. **Email uses native SuiteCRM OAuth** - No custom InboundEmail module; use Admin → Email → Inbound Email with OAuth connection
+12. **EmailLinkingService** - Custom hook in `custom/modules/EmailLinkingService.php` auto-links emails to Leads/Contacts

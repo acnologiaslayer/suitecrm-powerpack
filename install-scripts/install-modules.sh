@@ -13,7 +13,8 @@ if [ ! -f "/bitnami/suitecrm/public/legacy/config.php" ]; then
 fi
 
 # Verify modules exist (check both image source and runtime locations)
-for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub VerbacallIntegration InboundEmail; do
+# NOTE: InboundEmail removed - using native SuiteCRM InboundEmail + OAuth instead
+for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub VerbacallIntegration; do
     # Check image source location first (where modules are stored in Docker image)
     if [ -f "/opt/bitnami/suitecrm/modules/$MODULE/$MODULE.php" ]; then
         echo "Found module: $MODULE (from image)"
@@ -50,7 +51,7 @@ mkdir -p /bitnami/suitecrm/public/legacy/custom/Extension/modules/Contacts/Ext/L
 
 # Copy module files to legacy directory
 echo "Copying module files to legacy directory..."
-for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub VerbacallIntegration InboundEmail; do
+for MODULE in TwilioIntegration LeadJourney FunnelDashboard SalesTargets Packages Webhooks NotificationHub VerbacallIntegration; do
     # Prefer image source location (for upgrades), fallback to volume location
     if [ -d "/opt/bitnami/suitecrm/modules/$MODULE" ]; then
         echo "  Copying $MODULE from image..."
@@ -248,7 +249,7 @@ $app_list_strings['moduleList']['LeadJourney'] = 'Lead Journey';
 $app_list_strings['moduleList']['Webhooks'] = 'Webhooks';
 $app_list_strings['moduleList']['NotificationHub'] = 'Notification Hub';
 // VerbacallIntegration is intentionally hidden from nav - it's Lead-specific only
-$app_list_strings['moduleList']['InboundEmail'] = 'Inbound Email';
+// InboundEmail removed - use native SuiteCRM Admin → Email → Inbound Email instead
 
 // Inbound Email Protocol dropdown
 $app_list_strings['inbound_email_protocol_list'] = array(
@@ -310,10 +311,7 @@ $moduleList[] = 'NotificationHub';
 $beanList['VerbacallIntegration'] = 'VerbacallIntegration';
 $beanFiles['VerbacallIntegration'] = 'modules/VerbacallIntegration/VerbacallIntegration.php';
 // VerbacallIntegration not added to moduleList - it's Lead-specific only
-
-$beanList['InboundEmail'] = 'InboundEmail';
-$beanFiles['InboundEmail'] = 'modules/InboundEmail/InboundEmail.php';
-$moduleList[] = 'InboundEmail';
+// InboundEmail removed - use native SuiteCRM InboundEmail + OAuth
 PHPEOF
 
 # Create the compiled extension file - SuiteCRM loads modules.ext.php (not Include.ext.php)
@@ -351,10 +349,34 @@ $moduleList[] = 'NotificationHub';
 $beanList['VerbacallIntegration'] = 'VerbacallIntegration';
 $beanFiles['VerbacallIntegration'] = 'modules/VerbacallIntegration/VerbacallIntegration.php';
 // VerbacallIntegration not added to moduleList - it's Lead-specific only
+// InboundEmail removed - use native SuiteCRM InboundEmail + OAuth
+PHPEOF
 
-$beanList['InboundEmail'] = 'InboundEmail';
-$beanFiles['InboundEmail'] = 'modules/InboundEmail/InboundEmail.php';
-$moduleList[] = 'InboundEmail';
+# Install Email Linking Service for auto-linking inbound emails to Leads/Contacts
+echo "Installing Email Linking Service..."
+mkdir -p /bitnami/suitecrm/public/legacy/custom/modules/Emails
+mkdir -p /bitnami/suitecrm/public/legacy/custom/Extension/modules/Emails/Ext/LogicHooks
+
+# Copy EmailLinkingService (works with native SuiteCRM OAuth + InboundEmail)
+if [ -f "/opt/bitnami/suitecrm/custom/Extension/modules/EmailLinkingService.php" ]; then
+    cp /opt/bitnami/suitecrm/custom/Extension/modules/EmailLinkingService.php /bitnami/suitecrm/public/legacy/custom/modules/
+    echo "  Copied EmailLinkingService.php"
+fi
+
+# Create logic hooks for Emails module to auto-link and log to LeadJourney
+cat > /bitnami/suitecrm/public/legacy/custom/Extension/modules/Emails/Ext/LogicHooks/email_linking_hooks.php << 'PHPEOF'
+<?php
+/**
+ * Email Linking Logic Hooks
+ * Auto-links inbound emails to Leads/Contacts and logs to LeadJourney
+ */
+$hook_array['after_save'][] = [
+    1,
+    'Auto-link email to Lead/Contact and log to LeadJourney',
+    'custom/modules/EmailLinkingService.php',
+    'EmailLinkingService',
+    'afterEmailSave'
+];
 PHPEOF
 
 chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/
@@ -415,10 +437,6 @@ ${SPACES}verbacall-integration:
 ${SPACES2}index: true
 ${SPACES2}list: true
 ${SPACES2}record: false
-${SPACES}inbound-email:
-${SPACES2}index: true
-${SPACES2}list: true
-${SPACES2}record: true
 YAMLEOF
         
         # Validate YAML syntax (if python3 available)
@@ -950,26 +968,7 @@ INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, crea
 SELECT UUID(), NOW(), NOW(), '1', '1', 'list', 'VerbacallIntegration', 'module', 90, 0
 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='VerbacallIntegration' AND name='list' AND deleted=0);
 
--- InboundEmail standard actions
-INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
-SELECT UUID(), NOW(), NOW(), '1', '1', 'access', 'InboundEmail', 'module', 89, 0
-FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='InboundEmail' AND name='access' AND deleted=0);
-
-INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
-SELECT UUID(), NOW(), NOW(), '1', '1', 'view', 'InboundEmail', 'module', 90, 0
-FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='InboundEmail' AND name='view' AND deleted=0);
-
-INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
-SELECT UUID(), NOW(), NOW(), '1', '1', 'list', 'InboundEmail', 'module', 90, 0
-FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='InboundEmail' AND name='list' AND deleted=0);
-
-INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
-SELECT UUID(), NOW(), NOW(), '1', '1', 'edit', 'InboundEmail', 'module', 90, 0
-FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='InboundEmail' AND name='edit' AND deleted=0);
-
-INSERT INTO acl_actions (id, date_entered, date_modified, modified_user_id, created_by, name, category, acltype, aclaccess, deleted)
-SELECT UUID(), NOW(), NOW(), '1', '1', 'delete', 'InboundEmail', 'module', 90, 0
-FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM acl_actions WHERE category='InboundEmail' AND name='delete' AND deleted=0);
+-- InboundEmail removed - use native SuiteCRM InboundEmail + OAuth
 
 EOF
     echo "  ✓ Standard ACL actions registered"

@@ -27,7 +27,8 @@ COPY --chown=daemon:daemon custom-modules/Packages /opt/bitnami/suitecrm/modules
 COPY --chown=daemon:daemon custom-modules/Webhooks /opt/bitnami/suitecrm/modules/Webhooks
 COPY --chown=daemon:daemon custom-modules/NotificationHub /opt/bitnami/suitecrm/modules/NotificationHub
 COPY --chown=daemon:daemon custom-modules/VerbacallIntegration /opt/bitnami/suitecrm/modules/VerbacallIntegration
-COPY --chown=daemon:daemon custom-modules/InboundEmail /opt/bitnami/suitecrm/modules/InboundEmail
+# NOTE: InboundEmail removed - use SuiteCRM's native InboundEmail + OAuth instead
+# SES webhook moved to Webhooks module (action=ses_email)
 
 # Copy and setup WebSocket notification server
 COPY --chown=daemon:daemon config/notification-websocket /opt/bitnami/suitecrm/notification-websocket

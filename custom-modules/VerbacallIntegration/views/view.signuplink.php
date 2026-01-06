@@ -72,12 +72,17 @@ class VerbacallIntegrationViewSignuplink extends SugarView
         $client = new VerbacallClient();
         $signupUrl = $client->generateSignupUrl($lead->id, $lead->email1);
 
-        // Use logged-in user's name and email, default to no-reply@verbacall.com if no email
+        // Use logged-in user's name and email, fallback to system outbound email
         $fromName = trim($current_user->first_name . ' ' . $current_user->last_name);
         if (empty($fromName)) {
             $fromName = $current_user->user_name ?? 'Verbacall';
         }
-        $fromEmail = !empty($current_user->email1) ? $current_user->email1 : 'no-reply@verbacall.com';
+
+        // Get FROM email - try user's email first, fallback to no-reply
+        $fromEmail = $current_user->email1;
+        if (empty($fromEmail)) {
+            $fromEmail = 'no-reply@verbacall.com';
+        }
 
         $leadName = trim($lead->first_name . ' ' . $lead->last_name);
         if (empty($leadName)) {
