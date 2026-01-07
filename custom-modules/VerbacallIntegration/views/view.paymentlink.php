@@ -216,8 +216,20 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
         try {
             $mail = new SugarPHPMailer();
             $mail->setMailerForSystem();
-            $mail->From = $fromEmail;
-            $mail->FromName = $fromName;
+
+            // setMailerForSystem() doesn't set From/FromName, load from OutboundEmail directly
+            require_once('include/OutboundEmail/OutboundEmail.php');
+            $oe = new OutboundEmail();
+            $systemOe = $oe->getSystemMailerSettings();
+            if ($systemOe && !empty($systemOe->smtp_from_addr)) {
+                $mail->From = $systemOe->smtp_from_addr;
+                $mail->FromName = $systemOe->smtp_from_name ?: $fromName;
+            } else {
+                // Fallback to config values
+                $mail->From = $fromEmail;
+                $mail->FromName = $fromName;
+            }
+
             $mail->addAddress($lead->email1, $leadName);
             $mail->Subject = $subject;
             $mail->Body = $body;

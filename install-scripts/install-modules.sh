@@ -355,7 +355,27 @@ PHPEOF
 # Install Email Linking Service for auto-linking inbound emails to Leads/Contacts
 echo "Installing Email Linking Service..."
 mkdir -p /bitnami/suitecrm/public/legacy/custom/modules/Emails
+mkdir -p /bitnami/suitecrm/public/legacy/custom/modules/InboundEmail
 mkdir -p /bitnami/suitecrm/public/legacy/custom/Extension/modules/Emails/Ext/LogicHooks
+mkdir -p /bitnami/suitecrm/public/legacy/custom/Extension/modules/Schedulers/Ext/ScheduledTasks
+
+# Copy EmailToLeadLinker class
+if [ -f "/opt/bitnami/suitecrm/custom/Extension/modules/Emails/EmailToLeadLinker.php" ]; then
+    cp /opt/bitnami/suitecrm/custom/Extension/modules/Emails/EmailToLeadLinker.php /bitnami/suitecrm/public/legacy/custom/modules/Emails/
+    echo "  Copied EmailToLeadLinker.php"
+fi
+
+# Copy InboundEmailFolderHook class
+if [ -f "/opt/bitnami/suitecrm/custom/Extension/modules/InboundEmail/InboundEmailFolderHook.php" ]; then
+    cp /opt/bitnami/suitecrm/custom/Extension/modules/InboundEmail/InboundEmailFolderHook.php /bitnami/suitecrm/public/legacy/custom/modules/InboundEmail/
+    echo "  Copied InboundEmailFolderHook.php"
+fi
+
+# Copy scheduler task for email linking
+if [ -f "/opt/bitnami/suitecrm/custom/Extension/modules/Schedulers/Ext/ScheduledTasks/linkEmailsToLeads.php" ]; then
+    cp /opt/bitnami/suitecrm/custom/Extension/modules/Schedulers/Ext/ScheduledTasks/linkEmailsToLeads.php /bitnami/suitecrm/public/legacy/custom/Extension/modules/Schedulers/Ext/ScheduledTasks/
+    echo "  Copied linkEmailsToLeads.php scheduler task"
+fi
 
 # Copy EmailLinkingService (works with native SuiteCRM OAuth + InboundEmail)
 if [ -f "/opt/bitnami/suitecrm/custom/Extension/modules/EmailLinkingService.php" ]; then
@@ -364,22 +384,44 @@ if [ -f "/opt/bitnami/suitecrm/custom/Extension/modules/EmailLinkingService.php"
 fi
 
 # Create logic hooks for Emails module to auto-link and log to LeadJourney
-cat > /bitnami/suitecrm/public/legacy/custom/Extension/modules/Emails/Ext/LogicHooks/email_linking_hooks.php << 'PHPEOF'
+cat > /bitnami/suitecrm/public/legacy/custom/modules/Emails/logic_hooks.php << 'PHPEOF'
 <?php
-/**
- * Email Linking Logic Hooks
- * Auto-links inbound emails to Leads/Contacts and logs to LeadJourney
- */
-$hook_array['after_save'][] = [
-    1,
-    'Auto-link email to Lead/Contact and log to LeadJourney',
-    'custom/modules/EmailLinkingService.php',
-    'EmailLinkingService',
-    'afterEmailSave'
-];
+$hook_version = 1;
+$hook_array = Array();
+
+$hook_array['after_save'] = Array();
+$hook_array['after_save'][] = Array(10, 'Save email case updates', 'modules/AOP_Case_Updates/CaseUpdatesHook.php', 'CaseUpdatesHook', 'saveEmailUpdate');
+$hook_array['after_save'][] = Array(20, 'Link email to leads', 'custom/modules/Emails/EmailToLeadLinker.php', 'EmailToLeadLinker', 'afterSave');
+$hook_array['after_save'][] = Array(30, 'Link email to folder', 'custom/modules/InboundEmail/InboundEmailFolderHook.php', 'InboundEmailFolderHook', 'linkEmailToFolder');
+PHPEOF
+
+# Create logic hooks for InboundEmail module
+cat > /bitnami/suitecrm/public/legacy/custom/modules/InboundEmail/logic_hooks.php << 'PHPEOF'
+<?php
+$hook_version = 1;
+$hook_array = Array();
+
+$hook_array['after_save'] = Array();
+$hook_array['after_save'][] = Array(
+    10,
+    'Create folder for inbound email',
+    'custom/modules/InboundEmail/InboundEmailFolderHook.php',
+    'InboundEmailFolderHook',
+    'afterSave'
+);
 PHPEOF
 
 chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/
+
+# Copy InboundEmail OAuth configuration views
+echo "Installing InboundEmail OAuth configuration views..."
+if [ -d "/opt/bitnami/suitecrm/modules/InboundEmail/views" ]; then
+    mkdir -p /bitnami/suitecrm/public/legacy/modules/InboundEmail/views
+    cp /opt/bitnami/suitecrm/modules/InboundEmail/views/view.config.php /bitnami/suitecrm/public/legacy/modules/InboundEmail/views/ 2>/dev/null || true
+    cp /opt/bitnami/suitecrm/modules/InboundEmail/InboundEmailClient.php /bitnami/suitecrm/public/legacy/modules/InboundEmail/ 2>/dev/null || true
+    chown -R daemon:daemon /bitnami/suitecrm/public/legacy/modules/InboundEmail/
+    echo "  Copied InboundEmail OAuth views"
+fi
 
 # Add PowerPack modules to SuiteCRM 8 module routing
 echo "Adding modules to SuiteCRM 8 navigation..."
@@ -1020,6 +1062,32 @@ fi
 
 echo ""
 echo "Permissions can be managed in Admin -> Role Management -> FunnelDashboard"
+
+# Register email linking scheduler
+echo ""
+echo "Registering email linking scheduler..."
+SCHEDULER_EXISTS=$(mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "
+    SELECT COUNT(*) FROM schedulers WHERE job = 'function::linkEmailsToLeads' AND deleted = 0
+" 2>/dev/null || echo "0")
+
+if [ "$SCHEDULER_EXISTS" = "0" ]; then
+    mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" <<'EOF'
+-- Email linking scheduler
+INSERT INTO schedulers (id, name, job, date_time_start, date_time_end, job_interval, time_from, time_to, status, catch_up, created_by, modified_user_id, date_entered, date_modified, deleted)
+SELECT UUID(), 'Link Emails to Leads', 'function::linkEmailsToLeads', '2024-01-01 00:00:00', '2099-12-31 23:59:59', '*/5::*::*::*::*', '00:00:00', '23:59:59', 'Active', 0, '1', '1', NOW(), NOW(), 0
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM schedulers WHERE job = 'function::linkEmailsToLeads' AND deleted = 0);
+EOF
+    echo "  ✓ Email linking scheduler registered"
+else
+    echo "  Email linking scheduler already exists"
+fi
+
+# Ensure outbound email has proper auth_type for SMTP authentication
+echo ""
+echo "Configuring outbound email authentication..."
+mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -e "
+    UPDATE outbound_email SET auth_type = 'basic' WHERE type = 'system' AND (auth_type IS NULL OR auth_type = '');
+" 2>/dev/null && echo "  ✓ Outbound email auth_type configured" || echo "  Outbound email configuration skipped"
 
 # Enable modules in system display tabs
 echo ""

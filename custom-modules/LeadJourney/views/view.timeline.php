@@ -630,6 +630,7 @@ class LeadJourneyViewTimeline extends SugarView {
         }
 
         // Check in touchpoint_data
+        $callSid = null;
         if (!empty($item['touchpoint_data'])) {
             $data = is_array($item['touchpoint_data']) ? $item['touchpoint_data'] : json_decode($item['touchpoint_data'], true);
             if (!empty($data['recording_url'])) {
@@ -644,6 +645,23 @@ class LeadJourneyViewTimeline extends SugarView {
             // Build URL from document_id if available
             if (!empty($data['document_id'])) {
                 return 'index.php?module=TwilioIntegration&action=recording&document_id=' . urlencode($data['document_id']);
+            }
+
+            // Save call_sid for fallback lookup
+            if (!empty($data['call_sid'])) {
+                $callSid = $data['call_sid'];
+            }
+        }
+
+        // Fallback: Check calls table by call_sid (handles race condition where
+        // recording webhook arrives before status webhook creates lead_journey entry)
+        if (!empty($callSid)) {
+            global $db;
+            $safeSid = $db->quote($callSid);
+            $result = $db->query("SELECT recording_url FROM calls WHERE twilio_call_sid = '$safeSid' AND recording_url IS NOT NULL AND recording_url != '' AND deleted = 0 LIMIT 1");
+            $row = $db->fetchByAssoc($result);
+            if ($row && !empty($row['recording_url'])) {
+                return $row['recording_url'];
             }
         }
 

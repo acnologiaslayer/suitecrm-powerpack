@@ -185,24 +185,65 @@ function handleRecording() {
     $status = $_REQUEST['RecordingStatus'] ?? '';
     $duration = $_REQUEST['RecordingDuration'] ?? '0';
 
-    $GLOBALS['log']->info("Recording Webhook - SID: $recordingSid, CallSID: $callSid, Status: $status");
+    $GLOBALS['log']->info("Recording Webhook - SID: $recordingSid, CallSID: $callSid, Status: $status, URL: $recordingUrl");
 
-    // Log to audit if table exists
-    if ($status === 'completed' && $recordingSid) {
+    // Log to audit and update call record when recording is completed
+    if ($status === 'completed' && $recordingSid && $recordingUrl) {
+        $db = $GLOBALS['db'];
+        
+        // Add .mp3 extension if not present for playback
+        $recordingUrlMp3 = $recordingUrl;
+        if (strpos($recordingUrl, '.mp3') === false && strpos($recordingUrl, '.wav') === false) {
+            $recordingUrlMp3 = $recordingUrl . '.mp3';
+        }
+        
         try {
-            $db = $GLOBALS['db'];
+            // Update the calls table with recording info - find by CallSid in description or twilio_call_sid
+            $safeSid = $db->quote($callSid);
+            $safeUrl = $db->quote($recordingUrlMp3);
+            $safeRecSid = $db->quote($recordingSid);
+            
+            // Try to update by twilio_call_sid first, then by description
+            $updateSql = "UPDATE calls SET 
+                recording_url = '$safeUrl',
+                recording_sid = '$safeRecSid',
+                twilio_call_sid = '$safeSid',
+                date_modified = NOW()
+                WHERE (twilio_call_sid = '$safeSid' OR description LIKE '%Call SID: $safeSid%') AND deleted = 0";
+            $db->query($updateSql);
+            $GLOBALS['log']->info("Recording Webhook - Updated call record with recording URL for CallSID: $callSid");
+            
+            // Also update lead_journey entries with recording URL (both column and JSON data)
+            $journeyUpdateSql = "UPDATE lead_journey SET
+                recording_url = '$safeUrl',
+                touchpoint_data = JSON_SET(COALESCE(touchpoint_data, '{}'), '$.recording_url', '$safeUrl'),
+                date_modified = NOW()
+                WHERE touchpoint_data LIKE '%$safeSid%' AND deleted = 0";
+            $db->query($journeyUpdateSql);
+            $GLOBALS['log']->info("Recording Webhook - Updated lead_journey with recording URL");
+            
+        } catch (Exception $e) {
+            $GLOBALS['log']->error("Recording update failed: " . $e->getMessage());
+        }
+        
+        // Log to audit table
+        try {
             $id = generateGuid();
-            $sql = "INSERT INTO twilio_audit_log (id, date_entered, call_sid, recording_sid, recording_url, duration, status)
-                    VALUES ('$id', NOW(), '" . $db->quote($callSid) . "', '" . $db->quote($recordingSid) . "',
-                    '" . $db->quote($recordingUrl) . "', " . intval($duration) . ", '" . $db->quote($status) . "')";
+            $sql = "INSERT INTO twilio_audit_log (id, action, data, date_created)
+                    VALUES ('$id', 'recording_completed', '" . $db->quote(json_encode([
+                        'call_sid' => $callSid,
+                        'recording_sid' => $recordingSid,
+                        'recording_url' => $recordingUrlMp3,
+                        'duration' => intval($duration)
+                    ])) . "', NOW())";
             $db->query($sql);
         } catch (Exception $e) {
-            $GLOBALS['log']->error("Recording log failed: " . $e->getMessage());
+            $GLOBALS['log']->error("Recording audit log failed: " . $e->getMessage());
         }
     }
 
     header('Content-Type: application/json');
-    echo json_encode(['status' => 'ok']);
+    echo json_encode(['status' => 'ok', 'recording_sid' => $recordingSid]);
 }
 
 function handleStatus() {
@@ -215,8 +256,29 @@ function handleStatus() {
     $callStatus = $_REQUEST['CallStatus'] ?? '';
     $dialCallStatus = $_REQUEST['DialCallStatus'] ?? '';
     $duration = $_REQUEST['CallDuration'] ?? '0';
+    $from = $_REQUEST['From'] ?? '';
+    $to = $_REQUEST['To'] ?? '';
+    $direction = $_REQUEST['Direction'] ?? '';
 
-    $GLOBALS['log']->info("Status Webhook - SID: $callSid, CallStatus: $callStatus, DialCallStatus: $dialCallStatus, Duration: $duration");
+    // Check for explicit type parameter (added by our TwiML for outbound calls)
+    $callType = $_GET['type'] ?? '';
+    $customerPhone = $_GET['customer'] ?? '';
+
+    // If we have explicit outbound type from our TwiML, use it
+    if ($callType === 'outbound') {
+        $direction = 'outbound-api';
+        // Use the customer phone from URL if available (more reliable than Twilio's To for child legs)
+        if (!empty($customerPhone)) {
+            $to = $customerPhone;
+        }
+    }
+
+    $GLOBALS['log']->info("Status Webhook - SID: $callSid, CallStatus: $callStatus, DialCallStatus: $dialCallStatus, Duration: $duration, From: $from, To: $to, Direction: $direction, Type: $callType, Customer: $customerPhone");
+
+    // Log the call to SuiteCRM Calls module and LeadJourney
+    if (!empty($callSid) && in_array($callStatus, ['initiated', 'ringing', 'in-progress', 'completed', 'busy', 'no-answer', 'failed', 'canceled'])) {
+        logCallToCRM($callSid, $callStatus, $duration, $from, $to, $direction);
+    }
 
     // If this is a Dial action callback (has DialCallStatus), return TwiML
     if (!empty($dialCallStatus)) {
@@ -230,6 +292,163 @@ function handleStatus() {
         // Regular status callback, return JSON
         header('Content-Type: application/json');
         echo json_encode(['status' => 'ok', 'call_status' => $callStatus]);
+    }
+}
+
+/**
+ * Log call to SuiteCRM Calls module and LeadJourney table
+ */
+function logCallToCRM($callSid, $status, $duration, $from, $to, $direction) {
+    $db = $GLOBALS['db'];
+    
+    // Determine direction - if not provided, check if 'from' starts with 'client:' (browser call = outbound)
+    if (empty($direction)) {
+        $direction = (strpos($from, 'client:') === 0) ? 'outbound-api' : 'inbound';
+    }
+    $isOutbound = (stripos($direction, 'outbound') !== false);
+    
+    // For outbound calls, 'to' is the customer, 'from' might be client:xxx or our Twilio number
+    // For inbound calls, 'from' is the customer
+    $customerPhone = $isOutbound ? $to : $from;
+    $customerPhone = preg_replace('/^client:/', '', $customerPhone); // Remove client: prefix
+    
+    // Look up lead/contact by phone
+    $leadInfo = lookupCallerByPhone($customerPhone);
+    
+    $GLOBALS['log']->info("LogCallToCRM - SID: $callSid, Status: $status, Duration: $duration, Direction: $direction, CustomerPhone: $customerPhone, LeadFound: " . ($leadInfo ? 'yes' : 'no'));
+    
+    // Check if call record already exists for this CallSid
+    $existingCallId = null;
+    $safeSid = $db->quote($callSid);
+    $sql = "SELECT id FROM calls WHERE description LIKE '%Call SID: $safeSid%' AND deleted = 0 LIMIT 1";
+    $result = $db->query($sql);
+    if ($row = $db->fetchByAssoc($result)) {
+        $existingCallId = $row['id'];
+    }
+    
+    // Map Twilio status to SuiteCRM status
+    $crmStatus = 'Planned';
+    switch ($status) {
+        case 'completed':
+            $crmStatus = 'Held';
+            break;
+        case 'in-progress':
+            $crmStatus = 'Held'; // Call is active
+            break;
+        case 'busy':
+        case 'no-answer':
+        case 'failed':
+        case 'canceled':
+            $crmStatus = 'Not Held';
+            break;
+        case 'initiated':
+        case 'ringing':
+        case 'queued':
+            $crmStatus = 'Planned';
+            break;
+    }
+    
+    // Calculate duration
+    $durationInt = intval($duration);
+    $durationHours = floor($durationInt / 3600);
+    $durationMinutes = floor(($durationInt % 3600) / 60);
+    
+    if ($existingCallId) {
+        // Update existing call record
+        $updateSql = "UPDATE calls SET 
+            status = '" . $db->quote($crmStatus) . "',
+            duration_hours = " . intval($durationHours) . ",
+            duration_minutes = " . intval($durationMinutes) . ",
+            date_modified = NOW(),
+            description = CONCAT(description, '\nStatus Update: $status, Duration: " . gmdate('H:i:s', $durationInt) . "')
+            WHERE id = '" . $db->quote($existingCallId) . "'";
+        $db->query($updateSql);
+        $GLOBALS['log']->info("Updated existing call record: $existingCallId");
+    } else {
+        // Create new call record only for meaningful statuses (not just 'initiated')
+        if (in_array($status, ['completed', 'in-progress', 'busy', 'no-answer', 'failed', 'canceled', 'ringing'])) {
+            $callId = generateGuid();
+            $callName = $isOutbound ? 'Outbound Call to ' . $customerPhone : 'Inbound Call from ' . $customerPhone;
+            if ($leadInfo && !empty($leadInfo['name'])) {
+                $callName = $isOutbound ? 'Outbound Call to ' . $leadInfo['name'] : 'Inbound Call from ' . $leadInfo['name'];
+            }
+            
+            $parentType = $leadInfo ? $leadInfo['module'] : '';
+            $parentId = $leadInfo ? $leadInfo['record_id'] : '';
+            $assignedUserId = ($leadInfo && !empty($leadInfo['assigned_user_id'])) ? $leadInfo['assigned_user_id'] : '1';
+            
+            $description = ($isOutbound ? "Outbound" : "Inbound") . " call\n";
+            $description .= "From: $from\n";
+            $description .= "To: $to\n";
+            $description .= "Call SID: $callSid\n";
+            $description .= "Status: $status\n";
+            $description .= "Duration: " . gmdate('H:i:s', $durationInt);
+            
+            $sql = "INSERT INTO calls (id, name, date_entered, date_modified, modified_user_id, created_by, 
+                    description, deleted, status, direction, date_start, duration_hours, duration_minutes,
+                    parent_type, parent_id, assigned_user_id, twilio_call_sid)
+                    VALUES (
+                        '" . $db->quote($callId) . "',
+                        '" . $db->quote($callName) . "',
+                        NOW(), NOW(), '1', '1',
+                        '" . $db->quote($description) . "',
+                        0,
+                        '" . $db->quote($crmStatus) . "',
+                        '" . ($isOutbound ? 'Outbound' : 'Inbound') . "',
+                        NOW(),
+                        " . intval($durationHours) . ",
+                        " . intval($durationMinutes) . ",
+                        '" . $db->quote($parentType) . "',
+                        '" . $db->quote($parentId) . "',
+                        '" . $db->quote($assignedUserId) . "',
+                        '" . $db->quote($callSid) . "'
+                    )";
+            
+            try {
+                $db->query($sql);
+                $GLOBALS['log']->info("Created new call record: $callId for lead/contact: $parentId");
+            } catch (Exception $e) {
+                $GLOBALS['log']->error("Failed to create call record: " . $e->getMessage());
+            }
+            
+            // Also log to lead_journey table for timeline
+            if ($leadInfo && !empty($leadInfo['record_id'])) {
+                $journeyId = generateGuid();
+                $touchpointData = json_encode([
+                    'call_sid' => $callSid,
+                    'from' => $from,
+                    'to' => $to,
+                    'direction' => $isOutbound ? 'outbound' : 'inbound',
+                    'status' => $status,
+                    'duration' => $durationInt
+                ]);
+                
+                $journeySql = "INSERT INTO lead_journey (id, name, date_entered, date_modified, modified_user_id, created_by,
+                        description, deleted, parent_type, parent_id, touchpoint_type, touchpoint_date,
+                        touchpoint_data, source, assigned_user_id)
+                        VALUES (
+                            '" . $db->quote($journeyId) . "',
+                            '" . $db->quote($callName) . "',
+                            NOW(), NOW(), '1', '1',
+                            '" . $db->quote($description) . "',
+                            0,
+                            '" . $db->quote($parentType) . "',
+                            '" . $db->quote($parentId) . "',
+                            '" . ($isOutbound ? 'outbound_call' : 'inbound_call') . "',
+                            NOW(),
+                            '" . $db->quote($touchpointData) . "',
+                            'Twilio',
+                            '" . $db->quote($assignedUserId) . "'
+                        )";
+                
+                try {
+                    $db->query($journeySql);
+                    $GLOBALS['log']->info("Logged call to lead_journey for: " . $leadInfo['record_id']);
+                } catch (Exception $e) {
+                    $GLOBALS['log']->error("Failed to log to lead_journey: " . $e->getMessage());
+                }
+            }
+        }
     }
 }
 
@@ -473,6 +692,9 @@ function handleIncomingCall() {
 
     $baseUrl = getWebhookBaseUrl();
     $voicemailUrl = $baseUrl . '?action=twiml&dial_action=voicemail&from=' . urlencode($callerNumber);
+    $recordingUrl = $baseUrl . '?action=recording';
+    $statusUrl = $baseUrl . '?action=status';
+    $recordingEnabled = $GLOBALS['sugar_config']['twilio_enable_recordings'] ?? true;
 
     echo '<?xml version="1.0" encoding="UTF-8"?>';
     echo '<Response>';
@@ -480,7 +702,11 @@ function handleIncomingCall() {
     if (!empty($assignedUsers)) {
         // Dial all assigned browser clients simultaneously
         // First one to answer gets the call
-        echo '<Dial timeout="30" action="' . h($voicemailUrl) . '" method="POST">';
+        echo '<Dial timeout="30" action="' . h($voicemailUrl) . '" method="POST"';
+        if ($recordingEnabled) {
+            echo ' record="record-from-answer-dual" recordingStatusCallback="' . h($recordingUrl) . '" recordingStatusCallbackEvent="completed"';
+        }
+        echo '>';
 
         foreach ($assignedUsers as $userId) {
             // Client identity must match what's used in token generation
@@ -497,8 +723,14 @@ function handleIncomingCall() {
         if ($fallbackPhone) {
             $GLOBALS['log']->info("Incoming Call - No users found, trying fallback: $fallbackPhone");
             echo '<Say voice="Polly.Joanna">Please hold while we connect your call.</Say>';
-            echo '<Dial timeout="20" action="' . h($voicemailUrl) . '" method="POST">';
-            echo '<Number>' . h(cleanPhone($fallbackPhone)) . '</Number>';
+            echo '<Dial timeout="20" action="' . h($voicemailUrl) . '" method="POST"';
+            if ($recordingEnabled) {
+                echo ' record="record-from-answer-dual" recordingStatusCallback="' . h($recordingUrl) . '" recordingStatusCallbackEvent="completed"';
+            }
+            echo '>';
+            echo '<Number statusCallback="' . h($statusUrl) . '" statusCallbackEvent="initiated ringing answered completed">';
+            echo h(cleanPhone($fallbackPhone));
+            echo '</Number>';
             echo '</Dial>';
         } else {
             $GLOBALS['log']->info("Incoming Call - No users or fallback, going to voicemail");
@@ -981,6 +1213,8 @@ function handleIncomingVoiceCall($calledNumber, $callerNumber, $callSid) {
     $baseUrl = getWebhookBaseUrl();
     $voicemailUrl = $baseUrl . '?action=twiml&dial_action=voicemail&from=' . urlencode($callerNumber);
     $statusUrl = $baseUrl . '?action=status';
+    $recordingUrl = $baseUrl . '?action=recording';
+    $recordingEnabled = $GLOBALS['sugar_config']['twilio_enable_recordings'] ?? true;
 
     echo '<?xml version="1.0" encoding="UTF-8"?>';
     echo '<Response>';
@@ -988,7 +1222,11 @@ function handleIncomingVoiceCall($calledNumber, $callerNumber, $callSid) {
     if (!empty($assignedUsers)) {
         // Dial all assigned browser clients simultaneously
         // First one to answer gets the call
-        echo '<Dial timeout="30" action="' . h($voicemailUrl) . '" method="POST">';
+        echo '<Dial timeout="30" action="' . h($voicemailUrl) . '" method="POST"';
+        if ($recordingEnabled) {
+            echo ' record="record-from-answer-dual" recordingStatusCallback="' . h($recordingUrl) . '" recordingStatusCallbackEvent="completed"';
+        }
+        echo '>';
 
         foreach ($assignedUsers as $userId) {
             // Client identity must match what's used in token generation
@@ -1005,8 +1243,12 @@ function handleIncomingVoiceCall($calledNumber, $callerNumber, $callSid) {
         if ($fallbackPhone) {
             $GLOBALS['log']->info("Incoming Voice Call - No users found, trying fallback: $fallbackPhone");
             echo '<Say voice="Polly.Joanna">Please hold while we connect your call.</Say>';
-            echo '<Dial timeout="20" action="' . h($voicemailUrl) . '" method="POST">';
-            echo '<Number>' . h(cleanPhone($fallbackPhone)) . '</Number>';
+            echo '<Dial timeout="20" action="' . h($voicemailUrl) . '" method="POST"';
+            if ($recordingEnabled) {
+                echo ' record="record-from-answer-dual" recordingStatusCallback="' . h($recordingUrl) . '" recordingStatusCallbackEvent="completed"';
+            }
+            echo '>';
+            echo '<Number statusCallback="' . h($statusUrl) . '" statusCallbackEvent="initiated ringing answered completed">' . h(cleanPhone($fallbackPhone)) . '</Number>';
             echo '</Dial>';
         } else {
             $GLOBALS['log']->info("Incoming Voice Call - No users or fallback, going to voicemail");
@@ -1049,6 +1291,8 @@ function handleOutgoingVoiceCall($to, $from) {
 
     $baseUrl = getWebhookBaseUrl();
     $statusUrl = $baseUrl . '?action=status';
+    $recordingUrl = $baseUrl . '?action=recording';
+    $recordingEnabled = $GLOBALS['sugar_config']['twilio_enable_recordings'] ?? true;
 
     echo '<?xml version="1.0" encoding="UTF-8"?>';
     echo '<Response>';
@@ -1058,12 +1302,19 @@ function handleOutgoingVoiceCall($to, $from) {
     if (strlen($toDigits) >= 7) {
         // Clean and format the destination number
         $cleanTo = cleanPhone($to);
-        $GLOBALS['log']->info("Outgoing Voice Call - Clean To: $cleanTo, CallerId: $callerId");
+        $GLOBALS['log']->info("Outgoing Voice Call - Clean To: $cleanTo, CallerId: $callerId, Recording: " . ($recordingEnabled ? 'enabled' : 'disabled'));
 
-        // Dial the destination number
+        // Dial the destination number with recording enabled
         // The browser (Twilio Client) is already connected, this connects to the recipient
-        echo '<Dial callerId="' . h($callerId) . '" timeout="30" action="' . h($statusUrl) . '" method="POST">';
-        echo '<Number>' . h($cleanTo) . '</Number>';
+        echo '<Dial callerId="' . h($callerId) . '" timeout="30" action="' . h($statusUrl) . '" method="POST"';
+        if ($recordingEnabled) {
+            echo ' record="record-from-answer-dual" recordingStatusCallback="' . h($recordingUrl) . '" recordingStatusCallbackEvent="completed"';
+        }
+        echo '>';
+        // Add statusCallback to <Number> to get call status updates for outbound calls
+        echo '<Number statusCallback="' . h($statusUrl) . '" statusCallbackEvent="initiated ringing answered completed">';
+        echo h($cleanTo);
+        echo '</Number>';
         echo '</Dial>';
     } else {
         $GLOBALS['log']->error("Outgoing Voice Call - No valid destination number. Raw To: '$to', Digits: '$toDigits'");
@@ -1081,15 +1332,26 @@ function handleOutgoingVoiceCall($to, $from) {
 function outputOutbound($to, $config, $baseUrl) {
     $to = cleanPhone($to);
     $callerId = $config['phone_number'] ?? '';
-    $statusUrl = $baseUrl . '?action=twiml&dial_action=dial_status';
+    // Add type=outbound to help identify this as an outbound call in status callbacks
+    $statusUrl = $baseUrl . '?action=status&type=outbound&customer=' . urlencode($to);
+    $dialActionUrl = $baseUrl . '?action=twiml&dial_action=dial_status';
+    $recordingEnabled = $GLOBALS['sugar_config']['twilio_enable_recordings'] ?? false;
+    $recordingUrl = $baseUrl . '?action=recording&type=outbound&customer=' . urlencode($to);
 
     echo '<?xml version="1.0" encoding="UTF-8"?>';
     echo '<Response>';
     if ($to) {
         // Agent hears this message, then gets connected to the recipient
         echo '<Say voice="Polly.Joanna">Connecting you to ' . h(formatPhoneForSpeech($to)) . '. Please hold.</Say>';
-        echo '<Dial callerId="' . h($callerId) . '" timeout="30" action="' . h($statusUrl) . '" method="POST">';
-        echo '<Number>' . h($to) . '</Number>';
+        echo '<Dial callerId="' . h($callerId) . '" timeout="30" action="' . h($dialActionUrl) . '" method="POST"';
+        if ($recordingEnabled) {
+            echo ' record="record-from-answer-dual" recordingStatusCallback="' . h($recordingUrl) . '"';
+        }
+        echo '>';
+        // Add statusCallback to <Number> to get call status updates
+        echo '<Number statusCallback="' . h($statusUrl) . '" statusCallbackEvent="initiated ringing answered completed">';
+        echo h($to);
+        echo '</Number>';
         echo '</Dial>';
     } else {
         echo '<Say voice="Polly.Joanna">No destination number provided.</Say>';

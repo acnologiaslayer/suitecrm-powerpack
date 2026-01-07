@@ -4,8 +4,9 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v3.2.0
+**Current Version**: v3.2.1
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
+**Production URL**: https://customer-relations.boomershub.com
 
 This is a Docker-based SuiteCRM extension with seven custom modules for sales operations:
 
@@ -19,6 +20,51 @@ This is a Docker-based SuiteCRM extension with seven custom modules for sales op
 8. **VerbacallIntegration** - Signup and payment link generation for Leads
 
 > **Note**: Custom InboundEmail module was removed in v3.2.0 - use native SuiteCRM InboundEmail + OAuth instead.
+
+---
+
+## Production Environment
+
+**Server**: 5.161.183.69 (DigitalOcean)
+**Docker Compose**: `/srv/docker-compose.yml`
+**Container**: `suitecrm` (network_mode: host)
+**Database**: DigitalOcean Managed MySQL (db-mysql-nyc3-92477-do-user-27688594-0.k.db.ondigitalocean.com:25060)
+**SSL/Proxy**: nginx-proxy container
+
+### SSH Access
+```bash
+sshpass -p '$SSH_PASSWORD' ssh root@5.161.183.69
+# SSH_PASSWORD is stored in .env file
+```
+
+### Quick Commands
+```bash
+# View logs
+docker logs suitecrm --tail 100
+
+# Clear cache
+docker exec suitecrm rm -rf /bitnami/suitecrm/cache/* /bitnami/suitecrm/public/legacy/cache/*
+
+# Reset admin password
+echo -n "NewPassword123!" | md5sum  # Get MD5 hash
+docker exec suitecrm mysql --ssl-ca=/opt/bitnami/mysql/certs/ca-certificate.crt \
+  -h $DB_HOST -P $DB_PORT -u $DB_USER -p'$DB_PASSWORD' $DB_NAME \
+  -e "UPDATE users SET user_hash='<md5hash>' WHERE user_name='admin';"
+# Database credentials are stored in .env file
+
+# Upgrade production
+cd /srv && docker-compose pull suitecrm && docker-compose up -d suitecrm
+```
+
+### OAuth Provider (Microsoft 365)
+
+Already configured in database:
+- **Provider ID**: `81e0b8f2-3a09-4e4f-85d6-c399767ee01b`
+- **Client ID**: `8ff1f3c8-6ee4-4797-ac10-0401f4ce9a4d`
+- **Tenant ID**: `97a925bf-827d-40e5-b59f-c7212634f437`
+- **Authorize URL**: `https://login.microsoftonline.com/97a925bf-827d-40e5-b59f-c7212634f437/oauth2/v2.0/authorize`
+- **Token URL**: `https://login.microsoftonline.com/97a925bf-827d-40e5-b59f-c7212634f437/oauth2/v2.0/token`
+- **Scope**: `IMAP.AccessAsUser.All, offline_access`
 
 ---
 
@@ -493,6 +539,11 @@ docker push mahir009/suitecrm-powerpack:latest
 
 ## Version History (Recent)
 
+- **v3.2.1** - Fix InboundEmail OAuth configuration "Empty user" error:
+  - Fixed bug where OAuth email address field was not being read correctly
+  - Added InboundEmailClient.php for IMAP connection with OAuth support
+  - Added view.config.php for custom InboundEmail OAuth configuration UI
+  - Updated install-modules.sh to copy InboundEmail views during installation
 - **v3.2.0** - Email architecture refactoring (January 2026):
   - **BREAKING**: Removed custom `InboundEmail` module - use native SuiteCRM InboundEmail + OAuth
   - Created `EmailLinkingService` for auto-linking emails to Leads/Contacts via `after_save` hook
@@ -501,6 +552,9 @@ docker push mahir009/suitecrm-powerpack:latest
   - Added Azure OAuth environment variables: `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`
   - Updated Dockerfile, install-modules.sh, docker-compose.yml
   - Simplified email setup: just configure OAuth in SuiteCRM Admin panel
+  - **Deployed to production 2026-01-06** (customer-relations.boomershub.com)
+  - Added InboundEmail controller.php on production for legacy action routing
+  - Admin password reset to value in production .env (`SecurePassword123!`)
 - **v3.1.19** - Fix NotifyWS auth with standalone token endpoint:
   - Renamed to `notification_token.php` to avoid conflict with existing notification_webhook.php
   - Updated `notification-ws.js` to use `/legacy/notification_token.php` endpoint
@@ -595,3 +649,175 @@ docker exec suitecrm-test php /bitnami/suitecrm/public/legacy/bin/console suitec
 10. **WebSocket runs on port 3001** - Separate SSL nginx block needed for WSS
 11. **Email uses native SuiteCRM OAuth** - No custom InboundEmail module; use Admin → Email → Inbound Email with OAuth connection
 12. **EmailLinkingService** - Custom hook in `custom/modules/EmailLinkingService.php` auto-links emails to Leads/Contacts
+13. **SuiteCRM 8 URL routing** - Angular URLs use `#/module-name/action`, legacy uses `index.php?module=X&action=Y`. Custom legacy actions need controller.php with action methods.
+14. **OAuth Connection URLs**:
+    - Create OAuth Connection: `#/external-oauth-connection/edit`
+    - List OAuth Providers: `#/external-oauth-provider/index`
+    - Inbound Email List: `#/inbound-email/index`
+15. **Production secrets in `/srv/suitecrm/.env`** - Database and Twilio credentials stored here
+
+---
+
+## Twilio Integration Details
+
+### Twilio Configuration (Production)
+```php
+// In config_override.php (values from environment variables)
+$sugar_config['twilio_account_sid'] = getenv('TWILIO_ACCOUNT_SID');
+$sugar_config['twilio_auth_token'] = getenv('TWILIO_AUTH_TOKEN');
+$sugar_config['twilio_phone_number'] = getenv('TWILIO_PHONE_NUMBER');
+$sugar_config['twilio_twiml_app_sid'] = getenv('TWILIO_TWIML_APP_SID');
+$sugar_config['twilio_api_key'] = getenv('TWILIO_API_KEY');
+$sugar_config['twilio_api_secret'] = getenv('TWILIO_API_SECRET');
+$sugar_config['twilio_enable_click_to_call'] = true;
+$sugar_config['twilio_enable_auto_logging'] = true;
+$sugar_config['twilio_enable_recordings'] = true;
+// All Twilio credentials stored in .env file
+```
+
+### Webhook URLs (Configure in Twilio Console)
+| Setting | URL |
+|---------|-----|
+| TwiML App Voice URL | `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=twiml` |
+| Phone Number Voice URL | `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=inbound` |
+| Phone Number Status Callback | `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=status` |
+| Phone Number SMS URL | `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=sms` |
+| Recording Status Callback | `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=recording` |
+
+### Phone Assignment (Required for Inbound Routing)
+The `twilio_integration` table maps phone numbers to users for inbound call routing:
+```sql
+-- Current assignment
+Phone: +18456713651 -> User ID: 1 (admin)
+```
+
+### Call/SMS Logging Flow
+```
+Twilio Call/SMS
+      │
+      │ Webhook POST to twilio_webhook.php
+      ▼
+handleStatus() / handleSms()
+      │
+      │ lookupCallerByPhone() - finds Lead/Contact by phone
+      ▼
+logCallToCRM() / handleSms()
+      │
+      ├── INSERT INTO calls (for calls)
+      └── INSERT INTO lead_journey (for timeline)
+```
+
+---
+
+## Current Session Context (January 2026)
+
+### Completed Tasks
+- ✅ Deployed v3.2.0 to production (removed custom InboundEmail, added EmailLinkingService)
+- ✅ Reset admin password to `SecurePassword123!` (from production .env)
+- ✅ Microsoft 365 OAuth Provider already configured in database
+- ✅ Fixed database schema - added missing columns:
+  - `lead_journey`: `assigned_user_id`, `summary`, `thread_id`, `recording_url`
+  - `calls`: `recording_url`, `recording_sid`, `twilio_call_sid`
+  - `twilio_audit_log`: `log_type`, `direction`, `from_number`, `to_number`, `status`
+- ✅ Created phone assignment in `twilio_integration` table (+18456713651 → admin)
+- ✅ Verified webhook logging works (simulated calls/SMS log to lead_journey)
+- ✅ Inbound calls working and showing on timeline
+- ✅ Inbound SMS working and showing on timeline
+- ✅ Updated twilio_webhook.php with statusCallback on `<Number>` elements
+- ✅ Added `record="record-from-answer-dual"` for call recordings
+
+### Pending Tasks - Twilio
+- ⏳ **Outbound calls not showing on timeline** - Status callbacks may not be reaching webhook
+  - TwiML App may need Status Callback URL configured in Twilio Console
+  - Check Twilio Console → TwiML Apps → [TWIML_APP_SID from .env] → Voice Status Callback URL
+- ⏳ **Call recordings not showing** - Need to verify:
+  - Recording Status Callback URL configured in Twilio Console
+  - `handleRecording()` function storing recording_url in calls/lead_journey tables
+  - `twilio_enable_recordings` is set to true (confirmed)
+
+### Completed Tasks - Email
+- ✅ **Fixed outbound email** - Updated system outbound email to use Amazon SES
+  - Server: email-smtp.us-east-1.amazonaws.com:587
+  - User: (stored in database outbound_email table)
+  - Auth: TLS with basic auth
+  - From: no-reply@verbacall.com
+
+### Pending Tasks - Email
+- ⏳ **Inbound email configuration** - Use native SuiteCRM InboundEmail + OAuth
+
+### Inbound Email Setup (Office 365 OAuth)
+
+**Step 1: Create OAuth Connection**
+1. Go to: `https://customer-relations.boomershub.com/#/external-oauth-connection/edit`
+2. Fill in:
+   - **Name**: Office 365 - [Your Name]
+   - **Type**: Microsoft
+   - **External OAuth Provider**: Select "Microsoft 365" (already configured)
+3. Click **Authorize** → Login with your Office 365 account → Grant permissions
+4. Save
+
+**Step 2: Create Inbound Email Account**
+1. Go to: `https://customer-relations.boomershub.com/#/inbound-email/edit`
+2. Fill in:
+   - **Name**: [Your Name] Inbox
+   - **Email Address**: your-email@boomershub.com
+   - **Server URL**: outlook.office365.com
+   - **Port**: 993
+   - **Protocol**: IMAP
+   - **SSL**: Yes
+   - **Auth Type**: OAuth
+   - **External OAuth Connection**: Select the connection created in Step 1
+   - **Mailbox**: INBOX
+   - **Status**: Active
+3. Save
+
+**Step 3: Enable Scheduler**
+1. Go to Admin → Schedulers
+2. Find "Check Inbound Mailboxes"
+3. Set to Active with desired frequency (e.g., every 5 minutes)
+
+**How Email Linking Works**
+When emails arrive, the EmailLinkingService hook automatically:
+1. Looks up sender/recipient in Leads and Contacts by email address
+2. Links the email to the matching record
+3. Creates a LeadJourney entry for the timeline
+
+### Known Issues
+- None currently - all issues resolved
+
+### Twilio Console Configuration Needed
+
+**For TwiML App (TWIML_APP_SID from .env):**
+1. Go to Twilio Console → Develop → Voice → TwiML Apps
+2. Select the app (TWIML_APP_SID from .env)
+3. Set **Status Callback URL**: `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=status`
+
+**For Phone Number (+18456713651):**
+1. Go to Twilio Console → Phone Numbers → Manage → Active Numbers
+2. Click on +18456713651
+3. Under Voice & Fax:
+   - **A CALL COMES IN**: Webhook → `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=inbound`
+   - **CALL STATUS CHANGES**: `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=status`
+4. Under Messaging:
+   - **A MESSAGE COMES IN**: Webhook → `https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=sms`
+
+### Debug Commands
+```bash
+# Check recent lead_journey entries
+docker exec suitecrm mariadb -h $DB_HOST -P $DB_PORT -u $DB_USER -p'$DB_PASSWORD' \
+  --ssl-ca=/opt/bitnami/mysql/certs/ca-certificate.crt $DB_NAME \
+  -e "SELECT touchpoint_type, name, date_entered FROM lead_journey ORDER BY date_entered DESC LIMIT 10;"
+# Database credentials are stored in .env file
+
+# Check recent calls
+docker exec suitecrm mariadb -h $DB_HOST -P $DB_PORT -u $DB_USER -p'$DB_PASSWORD' --ssl-ca=... $DB_NAME \
+  -e "SELECT name, direction, status, recording_url, date_start FROM calls ORDER BY date_start DESC LIMIT 10;"
+
+# Check SuiteCRM logs for Twilio
+docker exec suitecrm grep -i twilio /bitnami/suitecrm/logs/legacy/suitecrm.log | tail -30
+
+# Test webhook endpoint
+curl -s -X POST 'https://customer-relations.boomershub.com/legacy/twilio_webhook.php?action=status' \
+  -d 'CallSid=test&CallStatus=completed&From=+1234567890&To=+18456713651'
+```
+
