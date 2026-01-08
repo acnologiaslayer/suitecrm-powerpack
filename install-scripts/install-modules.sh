@@ -441,6 +441,12 @@ if [ -f "/opt/bitnami/suitecrm/modules/InboundEmail/InboundEmailProcessor.php" ]
     echo "  Copied InboundEmailProcessor.php"
 fi
 
+# Copy InboundEmail controller (handles config, test, fetch actions)
+if [ -f "/opt/bitnami/suitecrm/modules/InboundEmail/controller.php" ]; then
+    cp /opt/bitnami/suitecrm/modules/InboundEmail/controller.php /bitnami/suitecrm/public/legacy/modules/InboundEmail/
+    echo "  Copied InboundEmail controller.php"
+fi
+
 chown -R daemon:daemon /bitnami/suitecrm/public/legacy/modules/InboundEmail/
 
 # Add PowerPack modules to SuiteCRM 8 module routing
