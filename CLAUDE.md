@@ -4,7 +4,7 @@
 
 **Repository**: `mahir009/suitecrm-powerpack`
 **Docker Hub**: `mahir009/suitecrm-powerpack`
-**Current Version**: v3.2.1
+**Current Version**: v3.2.6
 **Base Image**: Bitnami SuiteCRM (SuiteCRM 8 with Angular frontend + Legacy PHP)
 **Production URL**: https://customer-relations.boomershub.com
 
@@ -539,6 +539,14 @@ docker push mahir009/suitecrm-powerpack:latest
 
 ## Version History (Recent)
 
+- **v3.2.6** - Notifications for SMS/Email, cron setup, email sync fixes:
+  - Add real-time notifications for inbound SMS via NotificationHub
+  - Add real-time notifications for inbound emails linked to leads
+  - Set up cron daemon in docker-entrypoint.sh for SuiteCRM Scheduler
+  - Register `processInboundEmails` and `refreshOAuthTokens` schedulers
+  - Fix email sync: set `assigned_user_id`, `unread` status, `emails_text` storage
+  - Add `storeEmailText()` method for proper email display in SuiteCRM
+  - Cleanup notification queue daily at 2 AM via cron
 - **v3.2.1** - Fix InboundEmail OAuth configuration "Empty user" error:
   - Fixed bug where OAuth email address field was not being read correctly
   - Added InboundEmailClient.php for IMAP connection with OAuth support
