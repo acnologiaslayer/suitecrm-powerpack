@@ -263,8 +263,18 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
 
     private function displayPaymentUI($lead, $plans, $defaultDiscount, $expiryDays)
     {
-        $leadName = htmlspecialchars(trim($lead->first_name . ' ' . $lead->last_name));
+        // Plain text version for JavaScript email body (no HTML encoding)
+        $leadNamePlain = trim($lead->first_name . ' ' . $lead->last_name);
+        if (empty($leadNamePlain)) {
+            $leadNamePlain = 'there';
+        }
+
+        // HTML-encoded versions for display in HTML
+        $leadName = htmlspecialchars($leadNamePlain);
         $leadEmail = htmlspecialchars($lead->email1);
+
+        // JSON-encode for safe JavaScript embedding (handles quotes and special chars)
+        $leadNameJs = json_encode($leadNamePlain);
 
         // Build plans data as JSON for JavaScript
         $plansJson = json_encode($plans);
@@ -765,7 +775,7 @@ class VerbacallIntegrationViewPaymentlink extends SugarView
     }
 
     var generatedUrl = "";
-    var leadName = "{$leadName}";
+    var leadName = {$leadNameJs};
 
     function showEmailComposer() {
         generatedUrl = document.getElementById("resultUrl").textContent;

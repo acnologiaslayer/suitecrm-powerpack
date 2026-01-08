@@ -184,16 +184,26 @@ class VerbacallIntegrationViewSignuplink extends SugarView
     {
         global $current_user;
 
-        $leadName = htmlspecialchars(trim($lead->first_name . ' ' . $lead->last_name));
+        // Plain text versions for JavaScript email body (no HTML encoding)
+        $leadNamePlain = trim($lead->first_name . ' ' . $lead->last_name);
+        if (empty($leadNamePlain)) {
+            $leadNamePlain = 'there';
+        }
+        $senderNamePlain = trim($current_user->first_name . ' ' . $current_user->last_name);
+        if (empty($senderNamePlain)) {
+            $senderNamePlain = $current_user->user_name ?? 'Verbacall';
+        }
+
+        // HTML-encoded versions for display in HTML
+        $leadName = htmlspecialchars($leadNamePlain);
         $leadEmail = htmlspecialchars($lead->email1);
         $escapedUrl = htmlspecialchars($signupUrl);
         $linkSent = !empty($lead->verbacall_link_sent_c) ? date('M j, Y g:i A', strtotime($lead->verbacall_link_sent_c)) : null;
+        $senderName = htmlspecialchars($senderNamePlain);
 
-        // Get current user's name for email signature
-        $senderName = htmlspecialchars(trim($current_user->first_name . ' ' . $current_user->last_name));
-        if (empty($senderName)) {
-            $senderName = htmlspecialchars($current_user->user_name ?? 'Verbacall');
-        }
+        // JSON-encode for safe JavaScript embedding (handles quotes and special chars)
+        $leadNameJs = json_encode($leadNamePlain);
+        $senderNameJs = json_encode($senderNamePlain);
 
         echo <<<HTML
 <!DOCTYPE html>
@@ -419,7 +429,10 @@ HTML;
     </div>
 
     <script>
-    var defaultBody = "Hello {$leadName},\\n\\nYou've been invited to try Verbacall, our AI-powered phone solution that helps you manage calls more efficiently.\\n\\nClick the link below to create your account:\\n{$escapedUrl}\\n\\nThis personalized link is created just for you.\\n\\nIf you have any questions, please don't hesitate to reach out.\\n\\nBest regards,\\n{$senderName}";
+    var leadNameJs = {$leadNameJs};
+    var senderNameJs = {$senderNameJs};
+    var signupUrlJs = "{$escapedUrl}";
+    var defaultBody = "Hello " + leadNameJs + ",\\n\\nYou've been invited to try Verbacall, our AI-powered phone solution that helps you manage calls more efficiently.\\n\\nClick the link below to create your account:\\n" + signupUrlJs + "\\n\\nThis personalized link is created just for you.\\n\\nIf you have any questions, please don't hesitate to reach out.\\n\\nBest regards,\\n" + senderNameJs;
 
     function copyUrl() {
         var url = document.getElementById("signupUrl").textContent;

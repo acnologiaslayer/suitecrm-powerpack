@@ -352,6 +352,14 @@ $beanFiles['VerbacallIntegration'] = 'modules/VerbacallIntegration/VerbacallInte
 // InboundEmail removed - use native SuiteCRM InboundEmail + OAuth
 PHPEOF
 
+# Install OAuth Token Refresher (auto-refreshes OAuth tokens before expiry)
+echo "Installing OAuth Token Refresher..."
+mkdir -p /bitnami/suitecrm/public/legacy/custom/include/OAuth
+if [ -f "/opt/bitnami/suitecrm/custom/Extension/include/OAuth/OAuthTokenRefresher.php" ]; then
+    cp /opt/bitnami/suitecrm/custom/Extension/include/OAuth/OAuthTokenRefresher.php /bitnami/suitecrm/public/legacy/custom/include/OAuth/
+    echo "  Copied OAuthTokenRefresher.php"
+fi
+
 # Install Email Linking Service for auto-linking inbound emails to Leads/Contacts
 echo "Installing Email Linking Service..."
 mkdir -p /bitnami/suitecrm/public/legacy/custom/modules/Emails
@@ -413,15 +421,27 @@ PHPEOF
 
 chown -R daemon:daemon /bitnami/suitecrm/public/legacy/custom/
 
-# Copy InboundEmail OAuth configuration views
+# Copy InboundEmail OAuth configuration views and processing classes
 echo "Installing InboundEmail OAuth configuration views..."
 if [ -d "/opt/bitnami/suitecrm/modules/InboundEmail/views" ]; then
     mkdir -p /bitnami/suitecrm/public/legacy/modules/InboundEmail/views
     cp /opt/bitnami/suitecrm/modules/InboundEmail/views/view.config.php /bitnami/suitecrm/public/legacy/modules/InboundEmail/views/ 2>/dev/null || true
-    cp /opt/bitnami/suitecrm/modules/InboundEmail/InboundEmailClient.php /bitnami/suitecrm/public/legacy/modules/InboundEmail/ 2>/dev/null || true
-    chown -R daemon:daemon /bitnami/suitecrm/public/legacy/modules/InboundEmail/
     echo "  Copied InboundEmail OAuth views"
 fi
+
+# Copy InboundEmailClient (IMAP client with OAuth support)
+if [ -f "/opt/bitnami/suitecrm/modules/InboundEmail/InboundEmailClient.php" ]; then
+    cp /opt/bitnami/suitecrm/modules/InboundEmail/InboundEmailClient.php /bitnami/suitecrm/public/legacy/modules/InboundEmail/
+    echo "  Copied InboundEmailClient.php"
+fi
+
+# Copy InboundEmailProcessor (orchestrates email sync with OAuth token refresh)
+if [ -f "/opt/bitnami/suitecrm/modules/InboundEmail/InboundEmailProcessor.php" ]; then
+    cp /opt/bitnami/suitecrm/modules/InboundEmail/InboundEmailProcessor.php /bitnami/suitecrm/public/legacy/modules/InboundEmail/
+    echo "  Copied InboundEmailProcessor.php"
+fi
+
+chown -R daemon:daemon /bitnami/suitecrm/public/legacy/modules/InboundEmail/
 
 # Add PowerPack modules to SuiteCRM 8 module routing
 echo "Adding modules to SuiteCRM 8 navigation..."
