@@ -515,6 +515,9 @@ function handleSms() {
         try {
             $db->query($sql);
             $GLOBALS['log']->info("Incoming SMS logged to lead_journey for lead: " . $callerInfo['record_id']);
+
+            // Send real-time notification to assigned users
+            sendSmsNotification($callerInfo, $body, $assignedUsers);
         } catch (Exception $e) {
             $GLOBALS['log']->error("Failed to log SMS to lead_journey: " . $e->getMessage());
         }
@@ -1524,6 +1527,60 @@ function formatPhoneForSpeech($phone) {
 
 function h($str) {
     return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * Send notification for incoming SMS
+ *
+ * @param array $callerInfo Caller info from lookupCallerByPhone
+ * @param string $body SMS message body
+ * @param array $assignedUsers User IDs to notify
+ */
+function sendSmsNotification($callerInfo, $body, $assignedUsers) {
+    try {
+        // Load NotificationService
+        $servicePath = 'modules/Webhooks/NotificationService.php';
+        if (!file_exists($servicePath)) {
+            $servicePath = 'custom/modules/Webhooks/NotificationService.php';
+        }
+        if (!file_exists($servicePath)) {
+            $GLOBALS['log']->warn("sendSmsNotification: NotificationService not found");
+            return;
+        }
+
+        require_once($servicePath);
+
+        $service = new NotificationService();
+
+        // Build notification
+        $callerName = $callerInfo['name'] ?? 'Unknown';
+        $preview = strlen($body) > 80 ? substr($body, 0, 80) . '...' : $body;
+
+        $params = [
+            'title' => 'New SMS from ' . $callerName,
+            'message' => $preview,
+            'type' => 'info',
+            'priority' => 'high',
+            'target_users' => $assignedUsers,
+            'target_module' => 'Leads',
+            'target_record' => $callerInfo['record_id'],
+            'metadata' => [
+                'notification_type' => 'inbound_sms',
+                'sender_name' => $callerName,
+                'lead_id' => $callerInfo['record_id']
+            ]
+        ];
+
+        $result = $service->createNotification($params);
+
+        if ($result['success']) {
+            $GLOBALS['log']->info("sendSmsNotification: Sent notification to " . $result['user_count'] . " users");
+        } else {
+            $GLOBALS['log']->warn("sendSmsNotification: Failed - " . ($result['error'] ?? 'Unknown error'));
+        }
+    } catch (Exception $e) {
+        $GLOBALS['log']->error("sendSmsNotification: Error - " . $e->getMessage());
+    }
 }
 
 function generateGuid() {

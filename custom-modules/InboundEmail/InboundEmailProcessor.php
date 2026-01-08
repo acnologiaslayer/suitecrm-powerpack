@@ -196,17 +196,60 @@ class InboundEmailProcessor
         $email->description = $emailData["body"] ?? "";
         $email->description_html = $emailData["body_html"] ?? "";
         $email->type = "inbound";
-        $email->status = "read";
-        $email->intent = "imported";
+        $email->status = "unread";
+        $email->intent = "pick";
         $email->mailbox_id = $this->config->id;
 
+        // Assign to the inbound email account owner
+        if (!empty($this->config->created_by)) {
+            $email->assigned_user_id = $this->config->created_by;
+        } elseif (!empty($this->config->group_id)) {
+            // For group inboxes, assign to the first user in the group
+            $email->team_id = $this->config->group_id;
+        }
+
         $email->save();
+
+        // Store email body in emails_text table (required for search and display)
+        $this->storeEmailText($email, $emailData);
 
         // Link to folder
         $this->linkToFolder($email);
 
         // Link to leads/contacts by email address
         $this->linkToRecords($email, $emailData);
+    }
+
+    /**
+     * Store email text content in emails_text table
+     * This is required for proper email display and search in SuiteCRM
+     */
+    private function storeEmailText($email, $emailData)
+    {
+        global $db;
+
+        // Check if entry already exists
+        $check = $db->query("SELECT email_id FROM emails_text WHERE email_id = " . $db->quoted($email->id));
+        if ($db->fetchByAssoc($check)) {
+            return; // Already exists
+        }
+
+        $fromAddr = $emailData["from"] ?? "";
+        $toAddrs = implode(", ", $emailData["to"] ?? []);
+        $ccAddrs = implode(", ", $emailData["cc"] ?? []);
+        $bccAddrs = implode(", ", $emailData["bcc"] ?? []);
+
+        $sql = "INSERT INTO emails_text (email_id, from_addr, to_addrs, cc_addrs, bcc_addrs, description, description_html, raw_source, deleted) VALUES (" .
+            $db->quoted($email->id) . ", " .
+            $db->quoted($fromAddr) . ", " .
+            $db->quoted($toAddrs) . ", " .
+            $db->quoted($ccAddrs) . ", " .
+            $db->quoted($bccAddrs) . ", " .
+            $db->quoted($emailData["body"] ?? "") . ", " .
+            $db->quoted($emailData["body_html"] ?? "") . ", " .
+            $db->quoted("") . ", 0)";
+
+        $db->query($sql);
     }
 
     private function linkToFolder($email)
@@ -238,7 +281,7 @@ class InboundEmailProcessor
         if (empty($fromAddr)) return;
 
         // Find matching leads
-        $query = "SELECT l.id FROM leads l
+        $query = "SELECT l.id, l.first_name, l.last_name, l.assigned_user_id FROM leads l
                   JOIN email_addr_bean_rel eabr ON l.id = eabr.bean_id AND eabr.bean_module = " . $db->quoted("Leads") . " AND eabr.deleted = 0
                   JOIN email_addresses ea ON eabr.email_address_id = ea.id AND ea.deleted = 0
                   WHERE l.deleted = 0 AND LOWER(ea.email_address) = " . $db->quoted($fromAddr);
@@ -257,7 +300,79 @@ class InboundEmailProcessor
                     $db->quoted(gmdate("Y-m-d H:i:s")) . ", 0)"
                 );
                 $this->linkedCount++;
+
+                // Send notification for new email linked to lead
+                $this->sendEmailNotification($email, $emailData, $row);
             }
+        }
+    }
+
+    /**
+     * Send notification for incoming email linked to a lead
+     *
+     * @param object $email Email bean
+     * @param array $emailData Raw email data
+     * @param array $leadRow Lead data from query
+     */
+    private function sendEmailNotification($email, $emailData, $leadRow)
+    {
+        global $log;
+
+        try {
+            // Load NotificationService
+            $servicePath = "modules/Webhooks/NotificationService.php";
+            if (!file_exists($servicePath)) {
+                $servicePath = "custom/modules/Webhooks/NotificationService.php";
+            }
+            if (!file_exists($servicePath)) {
+                if ($log) $log->warn("InboundEmailProcessor: NotificationService not found");
+                return;
+            }
+
+            require_once($servicePath);
+
+            $service = new NotificationService();
+
+            // Build lead name
+            $leadName = trim(($leadRow["first_name"] ?? "") . " " . ($leadRow["last_name"] ?? ""));
+            if (empty($leadName)) {
+                $leadName = "Unknown Lead";
+            }
+
+            // Get sender name
+            $senderName = $emailData["from_name"] ?? $emailData["from"] ?? "Unknown";
+
+            // Build notification
+            $subject = $emailData["subject"] ?? "(No Subject)";
+            $preview = strlen($subject) > 60 ? substr($subject, 0, 60) . "..." : $subject;
+
+            $params = [
+                "title" => "New email from " . $senderName,
+                "message" => $preview,
+                "type" => "info",
+                "priority" => "normal",
+                "target_users" => !empty($leadRow["assigned_user_id"]) ? [$leadRow["assigned_user_id"]] : [],
+                "target_module" => "Leads",
+                "target_record" => $leadRow["id"],
+                "metadata" => [
+                    "notification_type" => "inbound_email",
+                    "sender_name" => $senderName,
+                    "sender_email" => $emailData["from"] ?? "",
+                    "lead_id" => $leadRow["id"],
+                    "lead_name" => $leadName,
+                    "email_id" => $email->id
+                ]
+            ];
+
+            $result = $service->createNotification($params);
+
+            if ($result["success"]) {
+                if ($log) $log->info("InboundEmailProcessor: Sent email notification to " . $result["user_count"] . " users");
+            } else {
+                if ($log) $log->warn("InboundEmailProcessor: Notification failed - " . ($result["error"] ?? "Unknown error"));
+            }
+        } catch (Exception $e) {
+            if ($log) $log->error("InboundEmailProcessor: Notification error - " . $e->getMessage());
         }
     }
 }

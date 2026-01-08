@@ -424,6 +424,29 @@ sed -i 's|ServerName www.example.com|ServerName localhost|g' /opt/bitnami/apache
 # Set required environment variables
 export BITNAMI_APP_NAME="suitecrm"
 
+# Set up and start cron for SuiteCRM Scheduler
+echo "Setting up SuiteCRM Scheduler cron job..."
+
+# Create cron job for SuiteCRM scheduler (runs every minute)
+CRON_FILE="/etc/cron.d/suitecrm"
+cat > $CRON_FILE << 'EOF'
+# SuiteCRM Scheduler - runs every minute
+* * * * * daemon cd /bitnami/suitecrm/public/legacy && php -f cron.php > /dev/null 2>&1
+
+# Cleanup notification queue - runs daily at 2 AM
+0 2 * * * daemon cd /bitnami/suitecrm/public/legacy && php -r "require_once('include/entryPoint.php'); if(file_exists('modules/Webhooks/NotificationService.php')) { require_once('modules/Webhooks/NotificationService.php'); (new NotificationService())->cleanupOldNotifications(7); }" > /dev/null 2>&1
+EOF
+
+# Set proper permissions for cron file
+chmod 0644 $CRON_FILE
+chown root:root $CRON_FILE
+
+# Start cron daemon
+echo "Starting cron daemon..."
+service cron start || cron || echo "Warning: Could not start cron daemon"
+
+echo "SuiteCRM Scheduler cron job configured"
+
 # Start WebSocket notification server in background (if Node.js and server exist)
 if [ -f "/opt/bitnami/suitecrm/notification-websocket/server.js" ] && command -v node &> /dev/null; then
     echo "Starting WebSocket notification server on port 3001..."

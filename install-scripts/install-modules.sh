@@ -1102,6 +1102,42 @@ else
     echo "  Email linking scheduler already exists"
 fi
 
+# Register Process Inbound Emails scheduler
+echo "Registering process inbound emails scheduler..."
+PROCESS_EMAIL_EXISTS=$(mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "
+    SELECT COUNT(*) FROM schedulers WHERE job = 'function::processInboundEmails' AND deleted = 0
+" 2>/dev/null || echo "0")
+
+if [ "$PROCESS_EMAIL_EXISTS" = "0" ]; then
+    mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" <<'EOF'
+-- Process Inbound Emails scheduler (runs every 5 minutes)
+INSERT INTO schedulers (id, name, job, date_time_start, date_time_end, job_interval, time_from, time_to, status, catch_up, created_by, modified_user_id, date_entered, date_modified, deleted)
+SELECT UUID(), 'Process Inbound Emails', 'function::processInboundEmails', '2024-01-01 00:00:00', '2099-12-31 23:59:59', '*/5::*::*::*::*', '00:00:00', '23:59:59', 'Active', 0, '1', '1', NOW(), NOW(), 0
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM schedulers WHERE job = 'function::processInboundEmails' AND deleted = 0);
+EOF
+    echo "  ✓ Process Inbound Emails scheduler registered"
+else
+    echo "  Process Inbound Emails scheduler already exists"
+fi
+
+# Register OAuth Token Refresh scheduler
+echo "Registering OAuth token refresh scheduler..."
+OAUTH_REFRESH_EXISTS=$(mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" -sN -e "
+    SELECT COUNT(*) FROM schedulers WHERE job = 'function::refreshOAuthTokens' AND deleted = 0
+" 2>/dev/null || echo "0")
+
+if [ "$OAUTH_REFRESH_EXISTS" = "0" ]; then
+    mysql -h"$SUITECRM_DATABASE_HOST" -P"$DB_PORT" -u"$SUITECRM_DATABASE_USER" -p"$SUITECRM_DATABASE_PASSWORD" $SSL_OPTS "$SUITECRM_DATABASE_NAME" <<'EOF'
+-- OAuth Token Refresh scheduler (runs every 30 minutes)
+INSERT INTO schedulers (id, name, job, date_time_start, date_time_end, job_interval, time_from, time_to, status, catch_up, created_by, modified_user_id, date_entered, date_modified, deleted)
+SELECT UUID(), 'Refresh OAuth Tokens', 'function::refreshOAuthTokens', '2024-01-01 00:00:00', '2099-12-31 23:59:59', '*/30::*::*::*::*', '00:00:00', '23:59:59', 'Active', 0, '1', '1', NOW(), NOW(), 0
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM schedulers WHERE job = 'function::refreshOAuthTokens' AND deleted = 0);
+EOF
+    echo "  ✓ OAuth Token Refresh scheduler registered"
+else
+    echo "  OAuth Token Refresh scheduler already exists"
+fi
+
 # Ensure outbound email has proper auth_type for SMTP authentication
 echo ""
 echo "Configuring outbound email authentication..."
